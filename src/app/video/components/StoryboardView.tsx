@@ -2,16 +2,16 @@
 
 import { useState, useCallback } from "react";
 import { Button, Drawer, Empty, Spin } from "antd";
-import { FileTextOutlined, LoadingOutlined } from "@ant-design/icons";
+import { FileTextOutlined } from "@ant-design/icons";
 import { fetchJson } from "@/app/components/client-utils";
-import type { StoryboardScene, ShotDetail } from "../types";
+import type { DomainResource } from "../types";
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
 
 export interface StoryboardViewProps {
-  scenes: StoryboardScene[];
+  videos: DomainResource[];
   isLoading: boolean;
   scriptKey: string | null;
   /** Episode DB id — needed to fetch content */
@@ -19,24 +19,10 @@ export interface StoryboardViewProps {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Flatten scenes → shots, keep only those with video structure       */
-/* ------------------------------------------------------------------ */
-
-function collectShots(scenes: StoryboardScene[]): ShotDetail[] {
-  return scenes
-    .flatMap(({ shots }) => shots)
-    .sort((a, b) => {
-      const sa = a.sceneIndex * 1000 + parseInt(a.shotIndex ?? "0", 10);
-      const sb = b.sceneIndex * 1000 + parseInt(b.shotIndex ?? "0", 10);
-      return sa - sb;
-    });
-}
-
-/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function StoryboardView({ scenes, isLoading, scriptKey, episodeId }: StoryboardViewProps) {
+export function StoryboardView({ videos, isLoading, scriptKey, episodeId }: StoryboardViewProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [epContent, setEpContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
@@ -44,7 +30,7 @@ export function StoryboardView({ scenes, isLoading, scriptKey, episodeId }: Stor
   const openEpContent = useCallback(async () => {
     if (!episodeId) return;
     setDrawerOpen(true);
-    if (epContent !== null) return; // already loaded
+    if (epContent !== null) return;
     setLoadingContent(true);
     try {
       const res = await fetchJson<{ content: string | null }>(
@@ -66,9 +52,7 @@ export function StoryboardView({ scenes, isLoading, scriptKey, episodeId }: Stor
     );
   }
 
-  const shots = collectShots(scenes);
-
-  if (!scriptKey || shots.length === 0) {
+  if (!scriptKey || videos.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No videos yet" />
@@ -103,25 +87,26 @@ export function StoryboardView({ scenes, isLoading, scriptKey, episodeId }: Stor
       </Drawer>
 
       <div className="grid grid-cols-2 gap-3">
-        {shots.map((shot) => (
+        {videos.map((v) => (
           <div
-            key={shot.id}
+            key={v.id}
             className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/50"
           >
-            {shot.videoUrl ? (
+            {v.url ? (
               <video
-                src={shot.videoUrl}
-                poster={shot.imageUrl ?? undefined}
+                src={v.url}
                 controls
                 muted
                 className="aspect-[9/16] w-full object-cover"
               />
             ) : (
-              <div className="relative aspect-[9/16] w-full bg-slate-800">
-                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded bg-slate-900/80 px-1.5 py-0.5">
-                  <Spin indicator={<LoadingOutlined className="text-xs text-slate-400" />} size="small" />
-                  <span className="text-[10px] text-slate-400">Generating...</span>
-                </div>
+              <div className="flex aspect-[9/16] w-full items-center justify-center bg-slate-800">
+                <span className="text-xs text-slate-500">No URL</span>
+              </div>
+            )}
+            {v.title && (
+              <div className="px-2 py-1 text-center text-[11px] text-slate-400">
+                {v.title}
               </div>
             )}
           </div>

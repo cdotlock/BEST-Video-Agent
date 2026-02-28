@@ -36,6 +36,10 @@ requires_mcps:
 - \`key\`（必填）— 图片的语义唯一标识，session 内唯一。使用同一个 key 再次调用会创建新版本而非新图片。
 - \`prompt\`（必填）— 描述要生成的图片内容
 - \`referenceImageUrls\`（可选）— 参考图 URL 数组，用于风格或内容引导
+- \`category\`（必填）— 资源分类名，决定 UI 右侧资源面板的分组标题。由你自由命名，如 \`角色立绘\`、\`场景\`、\`服装\`、\`分镜\` 等
+- \`scopeType\`（必填）— \`"novel"\` 或 \`"script"\`。角色立绘等全局资源用 novel，分镜/服装等集级资源用 script
+- \`scopeId\`（必填）— 对应 scope 的数据库 ID（novel_id 或 script_db_id，参见上下文）
+- \`title\`（可选）— 资源面板中显示的标签（如角色名、场景标题）
 
 **key 命名规范**：
 - 角色立绘：\`char_{name}_portrait\`（如 \`char_alice_portrait\`）
@@ -53,15 +57,21 @@ requires_mcps:
   "items": [{
     "key": "char_alice_portrait",
     "prompt": "一个穿着蓝色连衣裙的少女站在樱花树下，动漫风格，高清",
-    "referenceImageUrls": ["https://example.com/style-ref.jpg"]
+    "referenceImageUrls": ["https://example.com/style-ref.jpg"],
+    "category": "角色立绘",
+    "scopeType": "novel",
+    "scopeId": "novel-uuid-here",
+    "title": "Alice"
   }]
 }
 \\\`\\\`\\\`
 
 **返回**：
 \\\`\\\`\\\`json
-[{ "index": 0, "status": "ok", "key": "char_alice_portrait", "imageUrl": "https://oss.../generated.png", "version": 1 }]
+[{ "index": 0, "status": "ok", "key": "char_alice_portrait", "imageGenId": "cmXXX", "imageUrl": "https://oss.../generated.png", "version": 1 }]
 \\\`\\\`\\\`
+
+**注意**：生成成功后，系统自动将图片写入 domain_resources 表（含 image_gen_id），无需手动 INSERT。category 决定 UI 资源面板的分组展示。
 
 ### generate_video — 图生视频
 

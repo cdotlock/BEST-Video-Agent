@@ -2,7 +2,7 @@
 /*  Video workflow UI types                                            */
 /* ------------------------------------------------------------------ */
 
-export type EpStatus = "empty" | "uploaded" | "storyboarded" | "generating" | "done";
+export type EpStatus = "empty" | "uploaded" | "has_resources";
 
 export interface EpisodeSummary {
   id: string;
@@ -13,70 +13,26 @@ export interface EpisodeSummary {
   createdAt: string;
 }
 
-export interface SceneDetail {
-  id: string;
-  sceneIndex: number;
-  sceneTitle: string | null;
-  sceneDesc: string | null;
-  sceneImageUrl: string | null;
-}
+/* ---- Generic domain resource types ---- */
 
-export interface ShotDetail {
+export interface DomainResource {
   id: string;
-  sceneIndex: number;
-  shotIndex: string | null;
-  shotType: string | null;
-  definition: string | null;
-  imagePrompt: string | null;
-  videoPrompt: string | null;
-  imageUrl: string | null;
-  videoUrl: string | null;
-}
-
-export interface StoryboardScene {
-  scene: SceneDetail;
-  shots: ShotDetail[];
-}
-
-export interface CharacterResource {
-  id: string;
-  characterName: string;
-  physicalTraits: string | null;
-  portraitUrl: string | null;
-}
-
-export interface CostumeResource {
-  id: string;
-  characterName: string;
-  costumeImageUrl: string | null;
-}
-
-export interface ShotImageResource {
-  id: string;
-  sceneIndex: number;
-  shotIndex: string | null;
-  imageUrl: string;
-}
-
-export interface JsonResource {
-  id: string;
-  title: string;
-  data: unknown;
-}
-
-export interface OtherImageResource {
-  id: string;
-  url: string;
+  category: string;
+  mediaType: string;
   title: string | null;
+  url: string | null;
+  data: unknown;
+  imageGenId: string | null;
+  sortOrder: number;
 }
 
-export interface EpisodeResources {
-  characters: CharacterResource[];
-  costumes: CostumeResource[];
-  sceneImages: SceneDetail[];
-  shotImages: ShotImageResource[];
-  jsonData: JsonResource[];
-  otherImages: OtherImageResource[];
+export interface CategoryGroup {
+  category: string;
+  items: DomainResource[];
+}
+
+export interface DomainResources {
+  categories: CategoryGroup[];
 }
 
 export interface VideoContext {

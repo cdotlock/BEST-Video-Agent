@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJson } from "@/app/components/client-utils";
 import type {
   EpisodeSummary,
-  StoryboardScene,
-  EpisodeResources,
+  DomainResource,
+  DomainResources,
 } from "../types";
 
 export interface UseVideoDataReturn {
@@ -13,9 +13,9 @@ export interface UseVideoDataReturn {
   isLoadingEpisodes: boolean;
   selectedEpisode: EpisodeSummary | null;
   selectEpisode: (ep: EpisodeSummary | null) => void;
-  storyboard: StoryboardScene[];
+  storyboardVideos: DomainResource[];
   isLoadingStoryboard: boolean;
-  resources: EpisodeResources | null;
+  resources: DomainResources | null;
   isLoadingResources: boolean;
   refreshEpisodes: () => Promise<EpisodeSummary[]>;
   refreshStoryboard: () => Promise<void>;
@@ -31,9 +31,9 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
   const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState<EpisodeSummary | null>(null);
-  const [storyboard, setStoryboard] = useState<StoryboardScene[]>([]);
+  const [storyboardVideos, setStoryboardVideos] = useState<DomainResource[]>([]);
   const [isLoadingStoryboard, setIsLoadingStoryboard] = useState(false);
-  const [resources, setResources] = useState<EpisodeResources | null>(null);
+  const [resources, setResources] = useState<DomainResources | null>(null);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,15 +55,15 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
 
   const refreshStoryboard = useCallback(async () => {
     if (!selectedEpisode) {
-      setStoryboard([]);
+      setStoryboardVideos([]);
       return;
     }
     setIsLoadingStoryboard(true);
     try {
-      const data = await fetchJson<StoryboardScene[]>(
+      const data = await fetchJson<DomainResource[]>(
         `/api/video/episodes/${encodeURIComponent(selectedEpisode.id)}/storyboard`,
       );
-      setStoryboard(data);
+      setStoryboardVideos(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load storyboard");
     } finally {
@@ -80,10 +80,10 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
     console.log(`[refreshResources] fetching for episode=${selectedEpisode.id}`);
     setIsLoadingResources(true);
     try {
-      const data = await fetchJson<EpisodeResources>(
+      const data = await fetchJson<DomainResources>(
         `/api/video/episodes/${encodeURIComponent(selectedEpisode.id)}/resources?novelId=${encodeURIComponent(novelId)}`,
       );
-      console.log(`[refreshResources] got: chars=${data.characters.length} costumes=${data.costumes.length} scenes=${data.sceneImages.length} shots=${data.shotImages.length}`);
+      console.log(`[refreshResources] got: categories=${data.categories.length}`);
       setResources(data);
     } catch (err: unknown) {
       console.error("[refreshResources] FAILED:", err);
@@ -99,7 +99,7 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
 
   const selectEpisode = useCallback((ep: EpisodeSummary | null) => {
     setSelectedEpisode(ep);
-    setStoryboard([]);
+    setStoryboardVideos([]);
     setResources(null);
   }, []);
 
@@ -130,9 +130,9 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
           { method: "DELETE" },
         );
         // Deselect if deleted EP was selected
-        if (selectedEpisode?.id === scriptId) {
+      if (selectedEpisode?.id === scriptId) {
           setSelectedEpisode(null);
-          setStoryboard([]);
+          setStoryboardVideos([]);
           setResources(null);
         }
         await refreshEpisodes();
@@ -161,7 +161,7 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
     isLoadingEpisodes,
     selectedEpisode,
     selectEpisode,
-    storyboard,
+    storyboardVideos,
     isLoadingStoryboard,
     resources,
     isLoadingResources,

@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Button, Drawer, Input, Spin, Typography, App, Divider, Tag, Tooltip } from "antd";
+import { Button, Drawer, Input, Spin, Typography, App, Tag, Tooltip } from "antd";
 import {
   ReloadOutlined,
   RollbackOutlined,
   SaveOutlined,
-  CheckCircleFilled,
-  ClockCircleOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { fetchJson } from "@/app/components/client-utils";
 
@@ -60,14 +59,17 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [rollingBackVersion, setRollingBackVersion] = useState<number | null>(null);
+  const [viewedVersion, setViewedVersion] = useState(0);
 
   /* ---- Fetch detail ---- */
-  const fetchDetail = useCallback(async (id: string) => {
-    setIsLoading(true);
+  const fetchDetail = useCallback(async (id: string, silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const data = await fetchJson<ImageGenDetail>(`/api/image-generations/${id}`);
       setDetail(data);
-      setEditPrompt(data.prompt ?? "");
+      const curVer = data.versions.find((v) => v.version === data.currentVersion);
+      setEditPrompt(curVer?.prompt ?? "");
+      setViewedVersion(data.currentVersion);
     } catch {
       void message.error("Failed to load image detail");
     } finally {
@@ -83,9 +85,14 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
     }
   }, [imageGenId, fetchDetail]);
 
+  /* ---- Derived state ---- */
+  const viewedVerRow = detail?.versions.find((v) => v.version === viewedVersion) ?? null;
+  const isViewingCurrent = !detail || viewedVersion === detail.currentVersion;
+  const promptDirty = viewedVerRow != null && editPrompt !== viewedVerRow.prompt;
+
   /* ---- Save prompt ---- */
   const handleSavePrompt = useCallback(async () => {
-    if (!detail || editPrompt === detail.prompt) return;
+    if (!detail || !promptDirty) return;
     setIsSavingPrompt(true);
     try {
       await fetchJson(`/api/image-generations/${detail.id}`, {
@@ -94,36 +101,35 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
         body: JSON.stringify({ prompt: editPrompt }),
       });
       void message.success("Prompt saved");
-      void fetchDetail(detail.id);
+      void fetchDetail(detail.id, true);
       onRefresh?.();
     } catch {
       void message.error("Failed to save prompt");
     } finally {
       setIsSavingPrompt(false);
     }
-  }, [detail, editPrompt, fetchDetail, message, onRefresh]);
+  }, [detail, editPrompt, promptDirty, fetchDetail, message, onRefresh]);
 
   /* ---- Regenerate ---- */
   const handleRegenerate = useCallback(async () => {
     if (!detail) return;
     setIsRegenerating(true);
     try {
-      // If prompt was edited but not saved, use the edited prompt for regeneration
-      const promptOverride = editPrompt !== detail.prompt ? editPrompt : undefined;
+      const promptOverride = promptDirty ? editPrompt : undefined;
       await fetchJson(`/api/image-generations/${detail.id}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(promptOverride ? { prompt: promptOverride } : {}),
       });
       void message.success("Image regenerated");
-      void fetchDetail(detail.id);
+      void fetchDetail(detail.id, true);
       onRefresh?.();
     } catch {
       void message.error("Regeneration failed");
     } finally {
       setIsRegenerating(false);
     }
-  }, [detail, editPrompt, fetchDetail, message, onRefresh]);
+  }, [detail, editPrompt, promptDirty, fetchDetail, message, onRefresh]);
 
   /* ---- Rollback ---- */
   const handleRollback = useCallback(async (version: number) => {
@@ -136,7 +142,7 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
         body: JSON.stringify({ version }),
       });
       void message.success(`Rolled back to v${version}`);
-      void fetchDetail(detail.id);
+      void fetchDetail(detail.id, true);
       onRefresh?.();
     } catch {
       void message.error("Rollback failed");
@@ -146,8 +152,6 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
   }, [detail, fetchDetail, message, onRefresh]);
 
   /* ---- Render ---- */
-  const promptDirty = detail != null && editPrompt !== (detail.prompt ?? "");
-
   return (
     <Drawer
       title={
@@ -157,47 +161,115 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
             <Tag color="blue" style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
               v{detail.currentVersion}
             </Tag>
+            {!isViewingCurrent && (
+              <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
+                viewing v{viewedVersion}
+              </Tag>
+            )}
           </div>
         ) : "Image Detail"
       }
       open={!!imageGenId}
       onClose={onClose}
-      styles={{ wrapper: { width: 520 } }}
+      styles={{ wrapper: { width: 720 } }}
       destroyOnClose
     >
       {isLoading || !detail ? (
         <div className="flex justify-center py-12"><Spin /></div>
       ) : (
-        <div className="space-y-4">
-          {/* ── Current Image ── */}
-          {detail.imageUrl ? (
-            <div className="overflow-hidden rounded-lg border border-slate-700">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={detail.imageUrl}
-                alt={detail.key}
-                className="w-full object-contain"
-                style={{ maxHeight: 360 }}
+        <div className="flex gap-5" style={{ height: "calc(100vh - 110px)" }}>
+          {/* ── Left Column: Image + Version History ── */}
+          <div className="flex w-1/2 flex-col gap-3">
+            {/* Large Image */}
+            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-900/30">
+              {viewedVerRow?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={viewedVerRow.imageUrl}
+                  alt={detail.key}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span className="text-sm text-slate-500">No image yet</span>
+              )}
+            </div>
+
+            {/* Version History — horizontal scroll, chronological L→R */}
+            {detail.versions.length > 0 && (
+              <div className="shrink-0">
+                <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+                  {detail.versions.map((ver) => {
+                    const isViewed = ver.version === viewedVersion;
+                    const isCurrent = ver.version === detail.currentVersion;
+                    return (
+                      <div
+                        key={ver.id}
+                        className={`relative shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 transition-colors ${
+                          isViewed
+                            ? "border-blue-500"
+                            : "border-transparent hover:border-slate-600"
+                        }`}
+                        style={{ width: 56, height: 56 }}
+                        onClick={() => {
+                          setViewedVersion(ver.version);
+                          setEditPrompt(ver.prompt);
+                        }}
+                      >
+                        {ver.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={ver.imageUrl}
+                            alt={`v${ver.version}`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-slate-800 text-[10px] text-slate-500">
+                            …
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[10px] font-medium text-white">
+                          v{ver.version}{isCurrent ? " ✓" : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Right Column: Prompt + Actions ── */}
+          <div className="flex w-1/2 flex-col gap-3">
+            {/* Prompt header + copy */}
+            <div className="flex items-center justify-between">
+              <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Prompt
+              </Typography.Text>
+              <Tooltip title="Copy prompt">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(editPrompt);
+                    void message.success("Copied");
+                  }}
+                />
+              </Tooltip>
+            </div>
+
+            {/* Prompt textarea — fills available space */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Input.TextArea
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                autoSize={{ minRows: 6, maxRows: 24 }}
+                style={{ fontSize: 12 }}
               />
             </div>
-          ) : (
-            <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-700 text-slate-500">
-              No image yet
-            </div>
-          )}
 
-          {/* ── Prompt Editor ── */}
-          <div>
-            <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Prompt
-            </Typography.Text>
-            <Input.TextArea
-              value={editPrompt}
-              onChange={(e) => setEditPrompt(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              style={{ marginTop: 4, fontSize: 12 }}
-            />
-            <div className="mt-2 flex gap-2">
+            {/* Action buttons */}
+            <div className="flex shrink-0 flex-wrap gap-2">
               <Button
                 size="small"
                 icon={<SaveOutlined />}
@@ -216,82 +288,18 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
               >
                 {promptDirty ? "Save & Regenerate" : "Regenerate"}
               </Button>
+              {!isViewingCurrent && (
+                <Button
+                  size="small"
+                  icon={<RollbackOutlined />}
+                  onClick={() => void handleRollback(viewedVersion)}
+                  loading={rollingBackVersion === viewedVersion}
+                >
+                  Rollback to v{viewedVersion}
+                </Button>
+              )}
             </div>
           </div>
-
-          {/* ── Version History ── */}
-          {detail.versions.length > 1 && (
-            <>
-              <Divider style={{ margin: "12px 0 8px" }} />
-              <div>
-                <Typography.Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Version History ({detail.versions.length})
-                </Typography.Text>
-                <div className="mt-2 space-y-2">
-                  {[...detail.versions].reverse().map((ver) => {
-                    const isCurrent = ver.version === detail.currentVersion;
-                    return (
-                      <div
-                        key={ver.id}
-                        className={`flex gap-2 rounded-lg border p-2 ${
-                          isCurrent ? "border-blue-500/40 bg-blue-500/5" : "border-slate-700 bg-slate-900/50"
-                        }`}
-                      >
-                        {/* Thumbnail */}
-                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded bg-slate-800">
-                          {ver.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={ver.imageUrl}
-                              alt={`v${ver.version}`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-600">
-                              pending
-                            </div>
-                          )}
-                        </div>
-                        {/* Info */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium">v{ver.version}</span>
-                            {isCurrent && (
-                              <CheckCircleFilled className="text-blue-400" style={{ fontSize: 11 }} />
-                            )}
-                            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-slate-500">
-                              <ClockCircleOutlined style={{ fontSize: 9 }} />
-                              {new Date(ver.createdAt).toLocaleString("zh-CN", {
-                                month: "short", day: "2-digit",
-                                hour: "2-digit", minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] text-slate-400">
-                            {ver.prompt.length > 80 ? ver.prompt.slice(0, 80) + "…" : ver.prompt}
-                          </div>
-                          {!isCurrent && (
-                            <Tooltip title={`Roll back to v${ver.version}`}>
-                              <Button
-                                size="small"
-                                type="link"
-                                icon={<RollbackOutlined />}
-                                onClick={() => void handleRollback(ver.version)}
-                                loading={rollingBackVersion === ver.version}
-                                style={{ fontSize: 11, padding: "0 4px", height: 20 }}
-                              >
-                                Rollback
-                              </Button>
-                            </Tooltip>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
         </div>
       )}
     </Drawer>

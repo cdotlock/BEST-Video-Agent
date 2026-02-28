@@ -18,9 +18,7 @@ import type { SessionSummary } from "@/app/types";
 const STATUS_CONFIG: Record<EpStatus, { color: string; label: string }> = {
   empty: { color: "default", label: "empty" },
   uploaded: { color: "blue", label: "uploaded" },
-  storyboarded: { color: "cyan", label: "scripted" },
-  generating: { color: "orange", label: "generating" },
-  done: { color: "green", label: "done" },
+  has_resources: { color: "green", label: "active" },
 };
 
 function EpStatusTag({ status }: { status: EpStatus }) {

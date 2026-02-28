@@ -135,10 +135,10 @@ setAutoMessage("请根据EP内容，执行全部视频工作流");
 
         {/* Center — Storyboard (left) + Chat (right), side by side */}
         <section className="flex min-w-0 flex-1">
-          {data.storyboard.length > 0 && (
+          {data.storyboardVideos.length > 0 && (
             <div className="h-full w-64 shrink-0 overflow-y-auto border-r border-slate-800">
               <StoryboardView
-                scenes={data.storyboard}
+                videos={data.storyboardVideos}
                 isLoading={data.isLoadingStoryboard}
                 scriptKey={data.selectedEpisode?.scriptKey ?? null}
                 episodeId={data.selectedEpisode?.id ?? null}

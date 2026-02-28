@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { listBySession } from "@/lib/services/image-generation-service";
+import { listBySession, listAll } from "@/lib/services/image-generation-service";
 
-const QuerySchema = z.object({
-  sessionId: z.string().min(1),
-});
-
-/** GET /api/image-generations?sessionId=xxx */
+/** GET /api/image-generations?sessionId=xxx (optional — omit for all) */
 export async function GET(req: NextRequest) {
-  const parsed = QuerySchema.safeParse({
-    sessionId: req.nextUrl.searchParams.get("sessionId"),
-  });
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  }
+  const sessionId = req.nextUrl.searchParams.get("sessionId");
 
   try {
-    const rows = await listBySession(parsed.data.sessionId);
+    const rows = sessionId ? await listBySession(sessionId) : await listAll();
     return NextResponse.json(rows);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

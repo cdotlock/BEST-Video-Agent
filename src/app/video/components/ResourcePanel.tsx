@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Button, Collapse, Drawer, Empty, Input, Spin, Typography, Image, Tag, App } from "antd";
-import { SkinOutlined, PictureOutlined, FileImageOutlined, CodeOutlined, EditOutlined, AppstoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import type { EpisodeResources, JsonResource } from "../types";
+import { EditOutlined } from "@ant-design/icons";
+import type { DomainResources, DomainResource } from "../types";
 import { fetchJson } from "@/app/components/client-utils";
 import { ImageDetailDrawer } from "./ImageDetailDrawer";
 
@@ -11,26 +11,11 @@ import { ImageDetailDrawer } from "./ImageDetailDrawer";
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
 
-/* ------------------------------------------------------------------ */
-/*  Image Generation summary (from API)                                */
-/* ------------------------------------------------------------------ */
-
-interface ImageGenSummary {
-  id: string;
-  key: string;
-  currentVersion: number;
-  prompt: string | null;
-  imageUrl: string | null;
-}
-
 export interface ResourcePanelProps {
-  resources: EpisodeResources | null;
+  resources: DomainResources | null;
   isLoading: boolean;
-  /** Script ID needed to call the PATCH API. */
   scriptId: string | null;
-  /** Current chat session ID — needed to fetch image generations. */
   sessionId: string | undefined;
-  /** Called after a JSON resource is saved so parent can refresh. */
   onRefresh?: () => void;
 }
 
@@ -42,36 +27,43 @@ const ASIDE_CLASS = "flex h-full w-56 min-w-[200px] shrink-0 flex-col border-l b
 
 export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRefresh }: ResourcePanelProps) {
   const { message } = App.useApp();
+
   /* ---- JSON editor drawer state ---- */
-  const [editingItem, setEditingItem] = useState<JsonResource | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; title: string; data: unknown } | null>(null);
   const [editText, setEditText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  /* ---- Image generations state ---- */
-  const [imageGens, setImageGens] = useState<ImageGenSummary[]>([]);
+  /* ---- Image detail drawer state ---- */
   const [selectedImageGenId, setSelectedImageGenId] = useState<string | null>(null);
 
-  const fetchImageGens = useCallback(async (sid: string) => {
-    try {
-      const data = await fetchJson<ImageGenSummary[]>(`/api/image-generations?sessionId=${encodeURIComponent(sid)}`);
-      setImageGens(data);
-    } catch { /* silent — non-critical */ }
-  }, []);
-
-  useEffect(() => {
-    if (sessionId) {
-      void fetchImageGens(sessionId);
-    } else {
-      setImageGens([]);
+  /* ---- Smart image rendering ---- */
+  const renderSmartImage = (url: string, alt: string, imageGenId?: string | null) => {
+    if (imageGenId) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={alt}
+          className="w-full cursor-pointer"
+          style={{ display: "block" }}
+          onClick={() => setSelectedImageGenId(imageGenId)}
+        />
+      );
     }
-  }, [sessionId, fetchImageGens]);
+    return (
+      <Image
+        src={url}
+        alt={alt}
+        width="100%"
+        style={{ display: "block" }}
+      placeholder={<div className="aspect-square w-full bg-slate-800" />}
+        preview={true}
+      />
+    );
+  };
 
-  const handleImageGenRefresh = useCallback(() => {
-    if (sessionId) void fetchImageGens(sessionId);
-    onRefresh?.();
-  }, [sessionId, fetchImageGens, onRefresh]);
-
-  const openEditor = useCallback((item: JsonResource) => {
+  /* ---- JSON editor ---- */
+  const openEditor = useCallback((item: { id: string; title: string; data: unknown }) => {
     setEditingItem(item);
     setEditText(item.data != null ? JSON.stringify(item.data, null, 2) : "");
   }, []);
@@ -102,12 +94,70 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     }
   }, [editingItem, editText, scriptId, onRefresh]);
 
+  /* ---- Per media_type renderers ---- */
+
+  const renderImageItem = (r: DomainResource) => (
+    <div key={r.id} className="relative overflow-hidden rounded-lg">
+      {r.url ? (
+        renderSmartImage(r.url, r.title ?? "Image", r.imageGenId)
+      ) : (
+        <div className="flex aspect-square items-center justify-center bg-slate-800">
+          <span className="text-xs text-slate-600">No image</span>
+        </div>
+      )}
+      {r.title && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
+          <div className="truncate text-center text-[11px] font-medium text-white">{r.title}</div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderVideoItem = (r: DomainResource) => (
+    <div key={r.id} className="overflow-hidden rounded-lg">
+      {r.url ? (
+        <video src={r.url} controls muted className="aspect-[9/16] w-full object-cover" />
+      ) : (
+        <div className="flex aspect-[9/16] items-center justify-center bg-slate-800">
+          <span className="text-xs text-slate-600">No video</span>
+        </div>
+      )}
+      {r.title && (
+        <div className="px-2 py-1 text-center text-[11px] text-slate-400">{r.title}</div>
+      )}
+    </div>
+  );
+
+  const renderJsonItem = (r: DomainResource) => {
+    const text = r.data != null
+      ? (typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2))
+      : "";
+    return (
+      <div
+        key={r.id}
+        className="relative cursor-pointer overflow-hidden rounded-lg bg-slate-900"
+        onClick={() => openEditor({ id: r.id, title: r.title ?? "JSON", data: r.data })}
+        title="Click to edit"
+      >
+        <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-all px-2 pt-2 pb-8 font-mono text-[9px] leading-relaxed text-slate-400">
+          {text}
+        </pre>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2 pb-1.5 pt-6">
+          <div className="flex items-center justify-between">
+            <div className="truncate text-[11px] font-medium text-white">{r.title ?? "JSON"}</div>
+            <EditOutlined className="text-[11px] text-white/70" />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ---- Main render ---- */
+
   if (isLoading) {
     return (
       <aside className={ASIDE_CLASS}>
-        <div className="flex flex-1 items-center justify-center">
-          <Spin size="small" />
-        </div>
+        <div className="flex flex-1 items-center justify-center"><Spin size="small" /></div>
       </aside>
     );
   }
@@ -122,17 +172,8 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     );
   }
 
-  const { costumes, sceneImages, shotImages, jsonData, otherImages } = resources;
-  const hasJsonData = jsonData.length > 0;
-  const hasOtherImages = otherImages.length > 0;
-  const hasImageGens = imageGens.length > 0;
-  const isEmpty =
-    costumes.length === 0 &&
-    sceneImages.length === 0 &&
-    shotImages.length === 0 &&
-    !hasJsonData &&
-    !hasOtherImages &&
-    !hasImageGens;
+  const { categories } = resources;
+  const isEmpty = categories.length === 0;
 
   if (isEmpty) {
     return (
@@ -144,279 +185,49 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     );
   }
 
-  /* Items ordered by pipeline step */
   const items = [
-    // 0. Pinned Data (from DB columns like card_raw, storyboard_raw)
-    hasJsonData
-      ? {
-          key: "pinned-data",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <CodeOutlined /> Pinned Data
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {jsonData.length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="space-y-2">
-              {jsonData.map((item) => {
-                const text = item.data != null
-                  ? (typeof item.data === "string" ? item.data : JSON.stringify(item.data, null, 2))
-                  : "";
-                return (
-                  <div
-                    key={item.id}
-                    className="relative cursor-pointer overflow-hidden rounded-lg bg-slate-900"
-                    onClick={() => openEditor(item)}
-                    title="Click to edit"
-                  >
-                    {/* JSON content — fixed height, overflow hidden */}
-                    <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-all px-2 pt-2 pb-8 font-mono text-[9px] leading-relaxed text-slate-400">
-                      {text}
-                    </pre>
-                    {/* Bottom gradient overlay with title + edit icon */}
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2 pb-1.5 pt-6">
-                      <div className="flex items-center justify-between">
-                        <div className="truncate text-[11px] font-medium text-white">
-                          {item.title}
-                        </div>
-                        <EditOutlined className="text-[11px] text-white/70" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ),
-        }
-      : null,
+    // Dynamic categories — grouped by LLM-assigned category name
+    ...categories.map((g) => {
+      const images = g.items.filter((r) => r.mediaType === "image");
+      const videos = g.items.filter((r) => r.mediaType === "video");
+      const jsons = g.items.filter((r) => r.mediaType === "json");
 
-    // Costumes
-    costumes.length > 0
-      ? {
-          key: "costumes",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <SkinOutlined /> Costumes
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {costumes.length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-2 gap-2">
-              {costumes.map((c) => (
-                <div key={c.id} className="relative overflow-hidden rounded-lg">
-                  {c.costumeImageUrl ? (
-                    <Image
-                      src={c.costumeImageUrl}
-                      alt={c.characterName}
-                      width="100%"
-                      style={{ display: "block" }}
-                      placeholder={<div className="aspect-[9/16] w-full bg-slate-800" />}
-                      preview={true}
-                    />
-                  ) : (
-                    <div className="flex aspect-[9/16] items-center justify-center bg-slate-800">
-                      <SkinOutlined className="text-lg text-slate-600" />
-                    </div>
-                  )}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-                    <div className="truncate text-center text-[11px] font-medium text-white">
-                      {c.characterName}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ),
-        }
-      : null,
-
-    // 3. Scene Images
-    sceneImages.filter((s) => s.sceneImageUrl).length > 0
-      ? {
-          key: "scenes",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <PictureOutlined /> Scene Images
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {sceneImages.filter((s) => s.sceneImageUrl).length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-2 gap-2">
-              {sceneImages
-                .filter((s) => s.sceneImageUrl)
-                .map((s) => (
-                  <div key={s.id} className="relative overflow-hidden rounded-lg">
-                    <Image
-                      src={s.sceneImageUrl!}
-                      alt={s.sceneTitle ?? `Scene ${s.sceneIndex}`}
-                      width="100%"
-                      style={{ display: "block" }}
-                      placeholder={<div className="aspect-[9/16] w-full bg-slate-800" />}
-                      preview={true}
-                    />
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-                      <div className="truncate text-center text-[11px] font-medium text-white">
-                        {s.sceneTitle ?? `Scene ${s.sceneIndex}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ),
-        }
-      : null,
-
-    // 4. Shot Images (generated stills)
-    shotImages.length > 0
-      ? {
-          key: "shots",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <FileImageOutlined /> Shot Images
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {shotImages.length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-2 gap-2">
-              {shotImages.map((s) => (
-                <div key={s.id} className="relative overflow-hidden rounded-lg">
-                  <Image
-                    src={s.imageUrl}
-                    alt={`S${s.sceneIndex}-${s.shotIndex ?? "?"}`}
-                    width="100%"
-                    style={{ display: "block" }}
-                    placeholder={<div className="aspect-[9/16] w-full bg-slate-800" />}
-                    preview={true}
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-                    <div className="truncate text-center text-[11px] font-medium text-white">
-                      S{s.sceneIndex}-{s.shotIndex ?? "?"}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ),
-        }
-      : null,
-    // 5. Generated Images (with lifecycle management)
-    hasImageGens
-      ? {
-          key: "generated-images",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <ThunderboltOutlined /> Generated
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {imageGens.length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-2 gap-2">
-              {imageGens.map((ig) => (
-                <div
-                  key={ig.id}
-                  className="relative cursor-pointer overflow-hidden rounded-lg"
-                  onClick={() => setSelectedImageGenId(ig.id)}
-                >
-                  {ig.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={ig.imageUrl}
-                      alt={ig.key}
-                      className="aspect-square w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex aspect-square items-center justify-center bg-slate-800">
-                      <ThunderboltOutlined className="text-lg text-slate-600" />
-                    </div>
-                  )}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-                    <div className="flex items-center justify-between">
-                      <div className="truncate text-[11px] font-medium text-white">
-                        {ig.key}
-                      </div>
-                      <span className="shrink-0 text-[9px] text-white/60">v{ig.currentVersion}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ),
-        }
-      : null,
-
-    // 6. Other Images (generated but not in any known category)
-    hasOtherImages
-      ? {
-          key: "others",
-          label: (
-            <span className="flex items-center gap-1.5 text-xs font-medium">
-              <AppstoreOutlined /> Others
-              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                {otherImages.length}
-              </Tag>
-            </span>
-          ),
-          children: (
-            <div className="grid grid-cols-2 gap-2">
-              {otherImages.map((img) => (
-                <div key={img.id} className="relative overflow-hidden rounded-lg">
-                  <Image
-                    src={img.url}
-                    alt={img.title ?? "Generated"}
-                    width="100%"
-                    style={{ display: "block" }}
-                    placeholder={<div className="aspect-[9/16] w-full bg-slate-800" />}
-                    preview={true}
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-                    <div className="truncate text-center text-[11px] font-medium text-white">
-                      {img.title ?? "Generated"}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ),
-        }
-      : null,
-  ].filter(Boolean) as { key: string; label: React.ReactNode; children: React.ReactNode }[];
+      return {
+        key: `cat-${g.category}`,
+        label: (
+          <span className="flex items-center gap-1.5 text-xs font-medium">
+            {g.category}
+            <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>{g.items.length}</Tag>
+          </span>
+        ),
+        children: (
+          <div className="space-y-2">
+            {images.length > 0 && <div className="grid grid-cols-2 gap-2">{images.map(renderImageItem)}</div>}
+            {videos.length > 0 && <div className="grid grid-cols-2 gap-2">{videos.map(renderVideoItem)}</div>}
+            {jsons.length > 0 && <div className="space-y-2">{jsons.map(renderJsonItem)}</div>}
+          </div>
+        ),
+      };
+    }),
+  ];
 
   return (
     <>
       <aside className={ASIDE_CLASS}>
         <div className="border-b border-slate-800 px-3 py-2">
-          <Typography.Text strong style={{ fontSize: 12 }}>
-            Resources
-          </Typography.Text>
+          <Typography.Text strong style={{ fontSize: 12 }}>Resources</Typography.Text>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          <Collapse
-            defaultActiveKey={items.map((i) => i.key)}
-            items={items}
-            size="small"
-            ghost
-          />
+          <Collapse defaultActiveKey={items.map((i) => i.key)} items={items} size="small" ghost />
         </div>
       </aside>
 
-      {/* Image Detail Drawer */}
       <ImageDetailDrawer
         imageGenId={selectedImageGenId}
         onClose={() => setSelectedImageGenId(null)}
-        onRefresh={handleImageGenRefresh}
+        onRefresh={() => onRefresh?.()}
       />
 
-      {/* JSON Editor Drawer */}
       <Drawer
         title={editingItem?.title ?? "Edit JSON"}
         open={!!editingItem}

@@ -4,6 +4,7 @@ import type { McpProvider } from "../types";
 import { callFcGenerateImage } from "@/lib/services/fc-image-client";
 import { getCurrentSessionId } from "@/lib/request-context";
 import * as imageGenService from "@/lib/services/image-generation-service";
+import { createResource } from "@/lib/domain/resource-service";
 
 function text(t: string): CallToolResult {
   return { content: [{ type: "text", text: t }] };
@@ -30,6 +31,11 @@ const GenerateImageParams = z.object({
       key: z.string().min(1),
       prompt: z.string().min(1),
       referenceImageUrls: z.array(z.string().url()).optional(),
+      /** Resource classification — required for auto-writeback to domain_resources */
+      category: z.string().min(1),
+      scopeType: z.enum(["novel", "script"]),
+      scopeId: z.string().min(1),
+      title: z.string().optional(),
     }),
   ).min(1),
 });
@@ -57,7 +63,7 @@ export const videoMgrMcp: McpProvider = {
           properties: {
             items: {
               type: "array",
-              description: "Array of image generation tasks",
+              description: "Array of image generation tasks. Each item auto-creates a domain_resources entry.",
               items: {
                 type: "object",
                 properties: {
@@ -68,8 +74,12 @@ export const videoMgrMcp: McpProvider = {
                     items: { type: "string" },
                     description: "Optional reference image URLs for style/content guidance",
                   },
+                  category: { type: "string", description: "Resource category for UI grouping (LLM decides, e.g. '角色立绘', '场景', '服装', '分镜')" },
+                  scopeType: { type: "string", enum: ["novel", "script"], description: "Scope level: 'novel' for novel-wide resources, 'script' for episode-scoped" },
+                  scopeId: { type: "string", description: "ID of the scope entity (novel ID or script DB ID)" },
+                  title: { type: "string", description: "Human-readable label shown in resource panel (e.g. character name, scene title)" },
                 },
-                required: ["key", "prompt"],
+                required: ["key", "prompt", "category", "scopeType", "scopeId"],
               },
             },
           },
@@ -123,10 +133,42 @@ export const videoMgrMcp: McpProvider = {
             }),
           ),
         );
-        const imgOutput = results.map((r, i) =>
-          r.status === "fulfilled"
-            ? { index: i, status: "ok" as const, key: r.value.key, imageUrl: r.value.imageUrl, version: r.value.version }
-            : { index: i, status: "error" as const, key: items[i]!.key, error: r.reason instanceof Error ? r.reason.message : String(r.reason) },
+
+        // Auto-writeback: create domain_resources entries for successful generations
+        const imgOutput = await Promise.all(
+          results.map(async (r, i) => {
+            const item = items[i]!;
+            if (r.status !== "fulfilled") {
+              return {
+                index: i,
+                status: "error" as const,
+                key: item.key,
+                error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+              };
+            }
+            const gen = r.value;
+            try {
+              await createResource({
+                scopeType: item.scopeType,
+                scopeId: item.scopeId,
+                category: item.category,
+                mediaType: "image",
+                title: item.title ?? undefined,
+                url: gen.imageUrl ?? undefined,
+                imageGenId: gen.id,
+              });
+            } catch (e) {
+              console.error(`[video_mgr] domain_resources writeback failed for key=${item.key}:`, e);
+            }
+            return {
+              index: i,
+              status: "ok" as const,
+              key: gen.key,
+              imageGenId: gen.id,
+              imageUrl: gen.imageUrl,
+              version: gen.version,
+            };
+          }),
         );
         return json(imgOutput);
       }

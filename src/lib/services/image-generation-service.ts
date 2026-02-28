@@ -330,8 +330,22 @@ export async function getById(id: string): Promise<ImageGenDetail | null> {
 export async function listBySession(
   sessionId: string,
 ): Promise<ImageGenSummary[]> {
+  return listImageGenerations({ sessionId });
+}
+
+/**
+ * List all ImageGenerations across all sessions.
+ */
+export async function listAll(): Promise<ImageGenSummary[]> {
+  return listImageGenerations({});
+}
+
+/** Shared implementation — optionally filtered by sessionId. */
+async function listImageGenerations(
+  filter: { sessionId?: string },
+): Promise<ImageGenSummary[]> {
   const gens = await prisma.imageGeneration.findMany({
-    where: { sessionId },
+    where: filter.sessionId ? { sessionId: filter.sessionId } : undefined,
     include: {
       versions: { orderBy: { version: "asc" } },
     },
