@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback } from "react";
-import { Button, Input, Alert } from "antd";
+import { Button, Input, Select, Alert } from "antd";
 import { SendOutlined, StopOutlined, LoadingOutlined, PictureOutlined, CloseCircleFilled } from "@ant-design/icons";
 import { StatusBadge } from "@/app/components/StatusBadge";
 import { MessageList } from "@/app/components/MessageList";
 import { useImageUpload } from "@/app/components/hooks/useImageUpload";
+import { useModels } from "@/app/components/hooks/useModels";
 import { useVideoChat } from "../hooks/useVideoChat";
 import type { VideoContext } from "../types";
 
@@ -43,6 +44,8 @@ export function VideoChat({
     ? `video:${videoContext.novelId}:${videoContext.scriptKey}`
     : "video:unknown";
 
+  const { models, selectedModel, setSelectedModel } = useModels();
+
   const chat = useVideoChat(
     initialSessionId,
     userName,
@@ -52,6 +55,7 @@ export function VideoChat({
     onSessionCreated,
     onRefreshNeeded,
     autoMessage,
+    selectedModel,
   );
 
   const img = useImageUpload((msg) => chat.setError(msg));
@@ -183,6 +187,16 @@ export function VideoChat({
             style={{ fontSize: 12 }}
           />
           <div className="flex shrink-0 items-center gap-1.5 pb-0.5">
+            {models.length > 1 && (
+              <Select
+                size="small"
+                value={selectedModel || undefined}
+                onChange={setSelectedModel}
+                options={models.map((m) => ({ value: m.id, label: m.label }))}
+                style={{ minWidth: 80, fontSize: 11 }}
+                disabled={chat.isSending || chat.isStreaming}
+              />
+            )}
             <StatusBadge status={chat.status} />
             {chat.isStreaming ? (
               <Button

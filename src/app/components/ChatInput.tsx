@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Space } from "antd";
+import { Button, Input, Select, Space } from "antd";
 import {
   PictureOutlined,
   UploadOutlined,
@@ -8,6 +8,7 @@ import {
   StopOutlined,
   CloseCircleFilled,
 } from "@ant-design/icons";
+import type { ModelInfo } from "./hooks/useModels";
 
 export interface ChatInputProps {
   input: string;
@@ -27,6 +28,9 @@ export interface ChatInputProps {
   stopStreaming: () => void;
   openManualUpload: () => void;
   uploadDialogOpen: boolean;
+  models: ModelInfo[];
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
 export function ChatInput({
@@ -47,6 +51,9 @@ export function ChatInput({
   stopStreaming,
   openManualUpload,
   uploadDialogOpen,
+  models,
+  selectedModel,
+  onModelChange,
 }: ChatInputProps) {
   return (
     <footer className="border-t border-slate-800 px-4 py-3">
@@ -148,6 +155,16 @@ export function ChatInput({
             >
               文件
             </Button>
+            {models.length > 1 && (
+              <Select
+                size="small"
+                value={selectedModel || undefined}
+                onChange={onModelChange}
+                options={models.map((m) => ({ value: m.id, label: m.label }))}
+                style={{ minWidth: 90 }}
+                disabled={isSending || isStreaming}
+              />
+            )}
           </Space>
           {isStreaming ? (
             <Button

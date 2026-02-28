@@ -164,6 +164,7 @@ setAutoMessage("请根据EP内容，执行全部视频工作流");
           resources={data.resources}
           isLoading={data.isLoadingResources}
           scriptId={data.selectedEpisode?.id ?? null}
+          sessionId={currentSessionId}
           onRefresh={() => void data.refreshResources()}
         />
       </main>

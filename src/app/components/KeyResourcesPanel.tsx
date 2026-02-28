@@ -150,7 +150,7 @@ export function KeyResourcesPanel({
         title={editingKr?.title ?? "Edit JSON"}
         open={!!editingKr}
         onClose={() => setEditingKr(null)}
-        size={520}
+        styles={{ wrapper: { width: 520 } }}
         extra={
           <Button
             type="primary"

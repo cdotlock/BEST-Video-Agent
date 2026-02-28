@@ -125,7 +125,7 @@ export function guardQuery(sql: string): SqlCheckResult {
   if (!QUERY_PREFIXES.some((p) => n.startsWith(p)))
     return {
       ok: false,
-      reason: "BLOCKED: Only SELECT queries are allowed. Use the execute tool for DML.",
+      reason: "BLOCKED: Only SELECT / WITH queries are allowed in read mode. For writes, use INSERT / UPDATE / DELETE / CREATE TABLE etc.",
     };
 
   return { ok: true };

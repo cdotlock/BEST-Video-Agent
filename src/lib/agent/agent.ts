@@ -110,6 +110,8 @@ export interface AgentConfig {
   preloadMcps?: string[];
   /** Skill names whose full content should be injected into the system prompt. */
   skills?: string[];
+  /** LLM model id to use for this run (must be in MODEL_OPTIONS). */
+  model?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,11 +221,12 @@ export async function runAgent(
   sessionId?: string,
   userName?: string,
   images?: string[],
+  config?: AgentConfig,
 ): Promise<AgentResponse> {
   await initMcp();
 
   const session = await getOrCreateSession(sessionId, userName);
-  return withSessionLock(session.id, () => runAgentInner(userMessage, session, images));
+  return withSessionLock(session.id, () => runAgentInner(userMessage, session, images, config));
 }
 
 export async function runAgentStream(
@@ -318,12 +321,13 @@ async function runAgentInner(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
   images?: string[],
+  config?: AgentConfig,
 ): Promise<AgentResponse> {
   // Wrap with sessionId in request context (needed by memory__recall)
   const parentStore = requestContext.getStore() ?? {};
   return requestContext.run(
     { ...parentStore, sessionId: session.id },
-    () => runAgentInnerCore(userMessage, session, images),
+    () => runAgentInnerCore(userMessage, session, images, config),
   );
 }
 
@@ -331,6 +335,7 @@ async function runAgentInnerCore(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
   images?: string[],
+  config?: AgentConfig,
 ): Promise<AgentResponse> {
   const systemPrompt = await buildSystemPrompt();
 
@@ -367,7 +372,7 @@ async function runAgentInnerCore(
     const mcpTools = await registry.listAllTools();
     const openaiTools = mcpTools.map(mcpToolToOpenAI);
 
-    const completion = await chatCompletion(llmMessages, openaiTools);
+    const completion = await chatCompletion(llmMessages, openaiTools, config?.model);
     const choice = completion.choices[0];
     if (!choice) throw new Error("No completion choice returned");
 
@@ -540,7 +545,7 @@ async function runAgentStreamInnerCore(
     let currentContent = "";
 
     try {
-      const stream = await chatCompletionStream(llmMessages, openaiTools, signal);
+      const stream = await chatCompletionStream(llmMessages, openaiTools, signal, config?.model);
       const toolCallsByIndex = new Map<number, ToolCall>();
 
       for await (const chunk of stream) {

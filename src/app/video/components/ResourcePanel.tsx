@@ -1,20 +1,35 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button, Collapse, Drawer, Empty, Input, Spin, Typography, Image, Tag, App } from "antd";
-import { SkinOutlined, PictureOutlined, FileImageOutlined, CodeOutlined, EditOutlined, AppstoreOutlined } from "@ant-design/icons";
+import { SkinOutlined, PictureOutlined, FileImageOutlined, CodeOutlined, EditOutlined, AppstoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { EpisodeResources, JsonResource } from "../types";
 import { fetchJson } from "@/app/components/client-utils";
+import { ImageDetailDrawer } from "./ImageDetailDrawer";
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/*  Image Generation summary (from API)                                */
+/* ------------------------------------------------------------------ */
+
+interface ImageGenSummary {
+  id: string;
+  key: string;
+  currentVersion: number;
+  prompt: string | null;
+  imageUrl: string | null;
+}
 
 export interface ResourcePanelProps {
   resources: EpisodeResources | null;
   isLoading: boolean;
   /** Script ID needed to call the PATCH API. */
   scriptId: string | null;
+  /** Current chat session ID — needed to fetch image generations. */
+  sessionId: string | undefined;
   /** Called after a JSON resource is saved so parent can refresh. */
   onRefresh?: () => void;
 }
@@ -25,12 +40,36 @@ export interface ResourcePanelProps {
 
 const ASIDE_CLASS = "flex h-full w-56 min-w-[200px] shrink-0 flex-col border-l border-slate-800 bg-slate-950/80";
 
-export function ResourcePanel({ resources, isLoading, scriptId, onRefresh }: ResourcePanelProps) {
+export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRefresh }: ResourcePanelProps) {
   const { message } = App.useApp();
   /* ---- JSON editor drawer state ---- */
   const [editingItem, setEditingItem] = useState<JsonResource | null>(null);
   const [editText, setEditText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  /* ---- Image generations state ---- */
+  const [imageGens, setImageGens] = useState<ImageGenSummary[]>([]);
+  const [selectedImageGenId, setSelectedImageGenId] = useState<string | null>(null);
+
+  const fetchImageGens = useCallback(async (sid: string) => {
+    try {
+      const data = await fetchJson<ImageGenSummary[]>(`/api/image-generations?sessionId=${encodeURIComponent(sid)}`);
+      setImageGens(data);
+    } catch { /* silent — non-critical */ }
+  }, []);
+
+  useEffect(() => {
+    if (sessionId) {
+      void fetchImageGens(sessionId);
+    } else {
+      setImageGens([]);
+    }
+  }, [sessionId, fetchImageGens]);
+
+  const handleImageGenRefresh = useCallback(() => {
+    if (sessionId) void fetchImageGens(sessionId);
+    onRefresh?.();
+  }, [sessionId, fetchImageGens, onRefresh]);
 
   const openEditor = useCallback((item: JsonResource) => {
     setEditingItem(item);
@@ -86,12 +125,14 @@ export function ResourcePanel({ resources, isLoading, scriptId, onRefresh }: Res
   const { costumes, sceneImages, shotImages, jsonData, otherImages } = resources;
   const hasJsonData = jsonData.length > 0;
   const hasOtherImages = otherImages.length > 0;
+  const hasImageGens = imageGens.length > 0;
   const isEmpty =
     costumes.length === 0 &&
     sceneImages.length === 0 &&
     shotImages.length === 0 &&
     !hasJsonData &&
-    !hasOtherImages;
+    !hasOtherImages &&
+    !hasImageGens;
 
   if (isEmpty) {
     return (
@@ -266,7 +307,54 @@ export function ResourcePanel({ resources, isLoading, scriptId, onRefresh }: Res
           ),
         }
       : null,
-    // 5. Other Images (generated but not in any known category)
+    // 5. Generated Images (with lifecycle management)
+    hasImageGens
+      ? {
+          key: "generated-images",
+          label: (
+            <span className="flex items-center gap-1.5 text-xs font-medium">
+              <ThunderboltOutlined /> Generated
+              <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
+                {imageGens.length}
+              </Tag>
+            </span>
+          ),
+          children: (
+            <div className="grid grid-cols-2 gap-2">
+              {imageGens.map((ig) => (
+                <div
+                  key={ig.id}
+                  className="relative cursor-pointer overflow-hidden rounded-lg"
+                  onClick={() => setSelectedImageGenId(ig.id)}
+                >
+                  {ig.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={ig.imageUrl}
+                      alt={ig.key}
+                      className="aspect-square w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex aspect-square items-center justify-center bg-slate-800">
+                      <ThunderboltOutlined className="text-lg text-slate-600" />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
+                    <div className="flex items-center justify-between">
+                      <div className="truncate text-[11px] font-medium text-white">
+                        {ig.key}
+                      </div>
+                      <span className="shrink-0 text-[9px] text-white/60">v{ig.currentVersion}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ),
+        }
+      : null,
+
+    // 6. Other Images (generated but not in any known category)
     hasOtherImages
       ? {
           key: "others",
@@ -321,12 +409,19 @@ export function ResourcePanel({ resources, isLoading, scriptId, onRefresh }: Res
         </div>
       </aside>
 
+      {/* Image Detail Drawer */}
+      <ImageDetailDrawer
+        imageGenId={selectedImageGenId}
+        onClose={() => setSelectedImageGenId(null)}
+        onRefresh={handleImageGenRefresh}
+      />
+
       {/* JSON Editor Drawer */}
       <Drawer
         title={editingItem?.title ?? "Edit JSON"}
         open={!!editingItem}
         onClose={() => setEditingItem(null)}
-        size={520}
+        styles={{ wrapper: { width: 520 } }}
         extra={
           <Button type="primary" size="small" onClick={() => void handleSave()} loading={isSaving}>
             Save

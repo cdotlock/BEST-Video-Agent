@@ -5,6 +5,7 @@ import { Button, Typography } from "antd";
 import { AppstoreOutlined, PaperClipOutlined } from "@ant-design/icons";
 import type { AgentStatus } from "./StatusBadge";
 import { useChat } from "./hooks/useChat";
+import { useModels } from "./hooks/useModels";
 import { useImageUpload } from "./hooks/useImageUpload";
 import { useFileUpload } from "./hooks/useFileUpload";
 import { MessageList } from "./MessageList";
@@ -42,6 +43,8 @@ export function AgentPanel({
   showResources,
   onToggleResources,
 }: AgentPanelProps) {
+  const { models, selectedModel, setSelectedModel } = useModels();
+
   const chat = useChat(
     initialSessionId,
     userName,
@@ -49,6 +52,7 @@ export function AgentPanel({
     onTitleChange,
     onRefreshNeeded,
     onStatusChange,
+    selectedModel,
   );
 
   const imageUpload = useImageUpload((msg) => chat.setError(msg));
@@ -138,6 +142,9 @@ export function AgentPanel({
             stopStreaming={chat.stopStreaming}
             openManualUpload={fileUpload.openManualUpload}
             uploadDialogOpen={!!chat.uploadDialog}
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
         </div>
 

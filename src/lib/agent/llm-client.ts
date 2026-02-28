@@ -4,6 +4,7 @@ import type {
   ChatCompletionChunk,
 } from "openai/resources/chat/completions";
 import type { Tool } from "@modelcontextprotocol/sdk/types";
+import { DEFAULT_MODEL } from "./models";
 
 /* ------------------------------------------------------------------ */
 /*  Singleton client                                                  */
@@ -19,12 +20,6 @@ function getClient(): OpenAI {
     });
   }
   return g.__llmClient;
-}
-
-export function getModel(): string {
-  const model = process.env.LLM_MODEL;
-  if (!model) throw new Error("LLM_MODEL environment variable is not set");
-  return model;
 }
 
 /* ------------------------------------------------------------------ */
@@ -51,10 +46,11 @@ export type LlmMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 export async function chatCompletion(
   messages: LlmMessage[],
   tools?: ChatCompletionTool[],
+  model?: string,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   const client = getClient();
   return client.chat.completions.create({
-    model: getModel(),
+    model: model ?? DEFAULT_MODEL,
     messages,
     tools: tools?.length ? tools : undefined,
   });
@@ -64,11 +60,12 @@ export async function chatCompletionStream(
   messages: LlmMessage[],
   tools?: ChatCompletionTool[],
   signal?: AbortSignal,
+  model?: string,
 ): Promise<AsyncIterable<ChatCompletionChunk>> {
   const client = getClient();
   return client.chat.completions.create(
     {
-      model: getModel(),
+      model: model ?? DEFAULT_MODEL,
       messages,
       tools: tools?.length ? tools : undefined,
       stream: true,
@@ -82,7 +79,7 @@ export async function chatCompletionStream(
 /* ------------------------------------------------------------------ */
 
 function getTitleModel(): string {
-  return process.env.LLM_TITLE_MODEL || getModel();
+  return process.env.LLM_TITLE_MODEL || DEFAULT_MODEL;
 }
 
 export async function generateTitle(userMessage: string): Promise<string> {

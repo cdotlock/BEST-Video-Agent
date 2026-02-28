@@ -38,7 +38,7 @@ API **不是** MCP，不涉及沙箱或代码执行。API 是纯数据：
 
 ### 2. 建立表结构
 
-用 \`biz_db__execute\` 创建表：
+用 \`biz_db__sql\` 创建表：
 
 \\\`\\\`\\\`sql
 CREATE TABLE customers (

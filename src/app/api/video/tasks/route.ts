@@ -3,6 +3,7 @@ import { z } from "zod";
 import { submitTask } from "@/lib/services/task-service";
 import { VideoContextProvider } from "@/lib/video/context-provider";
 import { ensureVideoSchema } from "@/lib/video/schema";
+import { resolveModel } from "@/lib/agent/models";
 
 const VideoContextSchema = z.object({
   novelId: z.string().min(1),
@@ -15,6 +16,7 @@ const SubmitSchema = z.object({
   session_id: z.string().optional(),
   user: z.string().optional(),
   images: z.array(z.string()).optional(),
+  model: z.string().optional(),
   video_context: VideoContextSchema,
   preload_mcps: z.array(z.string()).optional(),
   skills: z.array(z.string()).optional(),
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { message, session_id, user, images, video_context, preload_mcps, skills } = parsed.data;
+  const { message, session_id, user, images, model, video_context, preload_mcps, skills } = parsed.data;
 
   const contextProvider = new VideoContextProvider({
     novelId: video_context.novelId,
@@ -47,6 +49,7 @@ export async function POST(req: NextRequest) {
     sessionId: session_id,
     user,
     images,
+    model: resolveModel(model),
     agentConfig: {
       contextProvider,
       preloadMcps: preload_mcps,

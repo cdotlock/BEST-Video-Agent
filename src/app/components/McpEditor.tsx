@@ -4,6 +4,7 @@ import { Button, Card, Input, Tag, Typography } from "antd";
 import { SaveOutlined } from "@ant-design/icons";
 import type { McpDetail, McpVersionSummary } from "../types";
 import { VersionList } from "./VersionList";
+import { SyncButton } from "./SyncButton";
 
 export interface McpEditorProps {
   detail: McpDetail;
@@ -56,7 +57,8 @@ export function McpEditor({
                 style={{ marginTop: 4 }}
               />
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <SyncButton type="mcp" name={detail.name} />
               <Button
                 type="primary"
                 icon={<SaveOutlined />}

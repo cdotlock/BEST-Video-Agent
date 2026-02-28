@@ -40,7 +40,7 @@ export function ResourceDrawer({
     <Drawer
       title="Resources"
       placement="right"
-      size={288}
+      styles={{ wrapper: { width: 288 } }}
       open={open}
       onClose={onClose}
       extra={

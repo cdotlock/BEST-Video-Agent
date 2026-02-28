@@ -105,6 +105,8 @@ export interface SubmitTaskInput {
   sessionId?: string;
   user?: string;
   images?: string[];
+  /** LLM model id to use (validated against MODEL_OPTIONS). */
+  model?: string;
   /** Optional agent configuration (context provider, preload MCPs, skills). */
   agentConfig?: AgentConfig;
   /** Optional pre-task initialization hook (e.g. ensureVideoSchema). */
@@ -210,6 +212,12 @@ async function executeTask(
       },
     };
 
+    // Merge per-request model into agentConfig
+    const agentConfig: AgentConfig = {
+      ...input.agentConfig,
+      ...(input.model ? { model: input.model } : {}),
+    };
+
     const result = await requestContext.run(
       { userName: input.user, sessionId },
       () =>
@@ -220,7 +228,7 @@ async function executeTask(
           callbacks,
           ac.signal,
           input.images,
-          input.agentConfig,
+          agentConfig,
         ),
     );
 

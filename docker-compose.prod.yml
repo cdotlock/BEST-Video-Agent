@@ -51,7 +51,7 @@ services:
       - app-network
 
   app:
-    image: ghcr.io/rydia-china/agent-forge:latest
+    image: agent-forge:latest  # 使用本地镜像（离线部署）
     restart: unless-stopped
     expose:
       - "8001"

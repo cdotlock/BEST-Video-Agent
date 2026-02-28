@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
 import type { McpProvider } from "../types";
+import { callFcGenerateImage } from "@/lib/services/fc-image-client";
+import { getCurrentSessionId } from "@/lib/request-context";
+import * as imageGenService from "@/lib/services/image-generation-service";
 
 function text(t: string): CallToolResult {
   return { content: [{ type: "text", text: t }] };
@@ -10,12 +13,10 @@ function json(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
-function getFcConfig() {
-  const imageUrl = process.env.FC_GENERATE_IMAGE_URL;
-  const imageToken = process.env.FC_GENERATE_IMAGE_TOKEN;
+function getFcVideoConfig() {
   const videoUrl = process.env.FC_GENERATE_VIDEO_URL;
   const videoToken = process.env.FC_GENERATE_VIDEO_TOKEN;
-  return { imageUrl, imageToken, videoUrl, videoToken };
+  return { videoUrl, videoToken };
 }
 
 const FcResultSchema = z.object({
@@ -26,6 +27,7 @@ const FcResultSchema = z.object({
 const GenerateImageParams = z.object({
   items: z.array(
     z.object({
+      key: z.string().min(1),
       prompt: z.string().min(1),
       referenceImageUrls: z.array(z.string().url()).optional(),
     }),
@@ -49,7 +51,7 @@ export const videoMgrMcp: McpProvider = {
       {
         name: "generate_image",
         description:
-          "Generate image(s) from text prompt(s) concurrently (via FC). Returns an array of results with status (ok/error) and image URL. For a single image, pass a one-element array.",
+          "Generate image(s) from text prompt(s) via FC, with lifecycle tracking. Each item requires a unique `key` (session-scoped) to identify the image across regenerations. Returns an array of results with status, imageUrl, key, and version.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -59,6 +61,7 @@ export const videoMgrMcp: McpProvider = {
               items: {
                 type: "object",
                 properties: {
+                  key: { type: "string", description: "Unique semantic key for this image within the session (e.g. char_alice_portrait, scene_1_bg, shot_1_3). Re-using an existing key creates a new version." },
                   prompt: { type: "string", description: "Text prompt describing the image to generate" },
                   referenceImageUrls: {
                     type: "array",
@@ -66,7 +69,7 @@ export const videoMgrMcp: McpProvider = {
                     description: "Optional reference image URLs for style/content guidance",
                   },
                 },
-                required: ["prompt"],
+                required: ["key", "prompt"],
               },
             },
           },
@@ -103,40 +106,33 @@ export const videoMgrMcp: McpProvider = {
     name: string,
     args: Record<string, unknown>,
   ): Promise<CallToolResult> {
-    const fc = getFcConfig();
-
     switch (name) {
       case "generate_image": {
-        if (!fc.imageUrl || !fc.imageToken) {
-          return text("未配置 FC 图像生成服务 (FC_GENERATE_IMAGE_URL, FC_GENERATE_IMAGE_TOKEN)");
+        const sessionId = getCurrentSessionId();
+        if (!sessionId) {
+          return text("No session context — generate_image requires an active session.");
         }
         const { items } = GenerateImageParams.parse(args);
         const results = await Promise.allSettled(
-          items.map(async ({ prompt, referenceImageUrls }) => {
-            const res = await fetch(fc.imageUrl!, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${fc.imageToken}`,
-              },
-              body: JSON.stringify({ prompt, referenceImageUrls }),
-            });
-            const data: unknown = await res.json();
-            const parsed = FcResultSchema.parse(data);
-            if (!res.ok || parsed.error) throw new Error(parsed.error ?? res.statusText);
-            if (!parsed.result) throw new Error("FC returned no result");
-            return parsed.result;
-          }),
+          items.map(({ key, prompt, referenceImageUrls }) =>
+            imageGenService.generateImage({
+              sessionId,
+              key,
+              prompt,
+              refUrls: referenceImageUrls,
+            }),
+          ),
         );
         const imgOutput = results.map((r, i) =>
           r.status === "fulfilled"
-            ? { index: i, status: "ok" as const, imageUrl: r.value }
-            : { index: i, status: "error" as const, error: r.reason instanceof Error ? r.reason.message : String(r.reason) },
+            ? { index: i, status: "ok" as const, key: r.value.key, imageUrl: r.value.imageUrl, version: r.value.version }
+            : { index: i, status: "error" as const, key: items[i]!.key, error: r.reason instanceof Error ? r.reason.message : String(r.reason) },
         );
         return json(imgOutput);
       }
 
       case "generate_video": {
+        const fc = getFcVideoConfig();
         if (!fc.videoUrl || !fc.videoToken) {
           return text("未配置 FC 视频生成服务 (FC_GENERATE_VIDEO_URL, FC_GENERATE_VIDEO_TOKEN)");
         }

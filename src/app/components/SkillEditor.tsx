@@ -4,6 +4,7 @@ import { Button, Card, Input, Tag, Typography } from "antd";
 import { SaveOutlined } from "@ant-design/icons";
 import type { SkillDetail, SkillVersionSummary } from "../types";
 import { VersionList } from "./VersionList";
+import { SyncButton } from "./SyncButton";
 
 export interface SkillEditorProps {
   detail: SkillDetail;
@@ -77,7 +78,8 @@ export function SkillEditor({
                     style={{ marginTop: 4 }}
                   />
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  <SyncButton type="skill" name={detail.name} />
                   <Button
                     type="primary"
                     icon={<SaveOutlined />}

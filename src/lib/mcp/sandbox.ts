@@ -2,6 +2,7 @@ import { newAsyncContext, type QuickJSAsyncContext, type QuickJSHandle } from "q
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
 import type { McpProvider } from "./types";
 import { prisma } from "@/lib/db";
+import { registry } from "./registry";
 
 /* ------------------------------------------------------------------ */
 /*  Wrapper code injected around user JS                              */
@@ -17,7 +18,7 @@ var console = {
   error: (...a) => __bridge_log(a.map(String).join(' ')),
 };
 
-function fetch(url, options) {
+function fetchSync(url, options) {
   var raw = __bridge_fetch(url, JSON.stringify(options || {}));
   var r = JSON.parse(raw);
   r.ok   = r.status >= 200 && r.status < 300;
@@ -25,9 +26,15 @@ function fetch(url, options) {
   r.text = function() { return this.body; };
   return r;
 }
+var fetch = fetchSync; // backward compat alias
 
 function getSkill(name) {
   return __bridge_getSkill(name);
+}
+
+function callTool(name, args) {
+  var raw = __bridge_callTool(name, JSON.stringify(args || {}));
+  return JSON.parse(raw);
 }
 `;
 
@@ -156,6 +163,24 @@ export class SandboxManager {
             return context.newString(ver.content);
           }
           return context.null;
+        },
+      ),
+    );
+
+    // bridge.callTool — asyncified: call any registered MCP tool from sandbox
+    setGlobal(
+      context,
+      "__bridge_callTool",
+      context.newAsyncifiedFunction(
+        "__bridge_callTool",
+        async (toolNameHandle, argsJsonHandle) => {
+          const toolName = context.getString(toolNameHandle);
+          const argsJson = context.getString(argsJsonHandle);
+          const args: Record<string, unknown> = JSON.parse(argsJson) as Record<string, unknown>;
+
+          console.log(`[sandbox:${name}] callTool("${toolName}")`);
+          const result = await registry.callTool(toolName, args);
+          return context.newString(JSON.stringify(result));
         },
       ),
     );

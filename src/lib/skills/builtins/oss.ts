@@ -30,7 +30,7 @@ requires_mcps:
 
 ### upload_from_url — 从 URL 上传
 
-从指定 URL 下载文件并上传到 OSS，返回 OSS 永久 URL。最常用场景：持久化 FC 生成的图片/视频。
+从指定 URL 下载文件并上传到 OSS，返回 OSS 永久 URL。适用于持久化第三方外部资源。
 
 **参数**：
 - \`url\`（必填）— 源文件 URL
@@ -70,13 +70,12 @@ requires_mcps:
 
 ## 典型工作流
 
-### 生成图片 → 持久化到 OSS
+### 持久化外部资源
 
-FC 生成的图片 URL 可能有时效性，使用 OSS 上传持久化：
+将外部 URL 的文件（如第三方图片、网络资源）持久化到 OSS：
 
-1. 调用 \`video_mgr__generate_image\` 生成图片，获得临时 URL
-2. 调用 \`oss__upload_from_url\`，传入临时 URL + folder="image"
-3. 使用返回的 OSS URL 作为永久链接
+1. 调用 \`oss__upload_from_url\`，传入外部 URL + folder
+2. 使用返回的 OSS URL 作为永久链接
 
 ### 批量资源归档
 

@@ -11,6 +11,8 @@
 import type { ContextProvider } from "@/lib/agent/context-provider";
 import { bizPool } from "@/lib/biz-db";
 import { resolveTable, GLOBAL_USER } from "@/lib/biz-db-namespace";
+import { getCurrentSessionId } from "@/lib/request-context";
+import { buildImageRegistryContext } from "@/lib/services/image-registry-context";
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
@@ -275,6 +277,17 @@ export class VideoContextProvider implements ContextProvider {
       tCharacters ? queryCharacters(tCharacters, this.config.novelId) : Promise.resolve([]),
     ]);
 
-    return buildContext(this.config, script, scenes, shots, costumes, characters);
+    let ctx = buildContext(this.config, script, scenes, shots, costumes, characters);
+
+    // Append Image Registry if any tracked images exist in this session
+    const sessionId = getCurrentSessionId();
+    if (sessionId) {
+      const imageRegistry = await buildImageRegistryContext(sessionId);
+      if (imageRegistry) {
+        ctx += "\n\n" + imageRegistry;
+      }
+    }
+
+    return ctx;
   }
 }

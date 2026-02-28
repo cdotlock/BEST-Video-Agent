@@ -37,6 +37,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# FC functions build artifacts
+fc-functions/build/
+fc-functions/**/node_modules/
+fc-functions/**/package-lock.json
+
 # prisma generated client
 src/generated
 

@@ -23,32 +23,30 @@ tags:
 - **不是独立进程** — 代码在 QuickJS WASM 沙盒中执行，与宿主进程完全隔离
 - **无 Node.js API** — 没有 \`require\`、\`fs\`、\`path\`、\`Buffer\`、\`process\` 等
 - **无 npm 依赖** — 只能使用原生 JS（ES2023）
-- **沙盒提供全局 API** — \`fetch()\`、\`console.log()\`、\`getSkill()\`
+- **沙盒提供全局 API** — \`fetchSync()\`、\`console.log()\`、\`getSkill()\`、\`callTool()\`
 
 ## 沙盒全局 API
 
-### fetch(url, options?)
+### fetchSync(url, options?)
 
-发起 HTTP 请求。同步返回简化 Response 对象（沙盒通过 WASM asyncify 透明挂起/恢复）。
-
-返回值
+发起 HTTP 请求。同步返回简化 Response 对象（底层通过 WASM asyncify 透明挂起/恢复）。
+命名为 \`fetchSync\` 而非 \`fetch\`，以明确表示这是同步调用，与标准 \`fetch\` API 不同。
 
 \`\`\`js
 // GET + JSON 解析
-const resp = fetch("https://api.example.com/data");
+const resp = fetchSync("https://api.example.com/data");
 if (!resp.ok) throw new Error("HTTP " + resp.status);
 const data = resp.json();
 
 // POST
-const resp = fetch("https://api.example.com/items", {
+const resp = fetchSync("https://api.example.com/items", {
   method: "POST",
   headers: { "Content-Type": "application/json", "Authorization": "Bearer xxx" },
   body: JSON.stringify({ name: "test" }),
 });
 \`\`\`
 
-**注意**：\`resp.json()\` 和 \`resp.text()\` 是同步方法（body 已随请求一起返回）。
-\`fetch()\` 本身也是同步的，不需要 \`await\`（写了也无害）。
+**注意**：\`resp.json()\` 和 \`resp.text()\` 也是同步的（body 已随请求一起返回）。
 
 ### console.log(...args) / console.warn(...args) / console.error(...args)
 
@@ -69,6 +67,31 @@ if (instructions) {
   // 使用 skill 中的知识
 }
 \`\`\`
+
+### callTool(name, args)
+
+调用系统中任意已注册的 MCP tool（包括 static 和 dynamic provider）。同步调用。
+参数 \`name\` 使用 fully-qualified 格式：\`providerName__toolName\`（双下划线分隔）。
+返回 MCP CallToolResult 对象（\`{ content: [...] }\`）。
+
+\`\`\`js
+// 查询业务数据库
+const result = callTool("biz_db__sql", {
+  sql: "SELECT * FROM characters WHERE novel_id = 1"
+});
+const rows = JSON.parse(result.content[0].text).rows;
+
+// 写入也用同一个 tool
+callTool("biz_db__sql", {
+  sql: "INSERT INTO logs (message) VALUES ('hello')"
+});
+
+// 调用其他 MCP provider 的 tool
+const tables = callTool("biz_db__list_tables", {});
+\`\`\`
+
+**注意**：callTool 在沙盒中是同步的（与 fetch/getSkill 相同，底层通过 WASM asyncify 透明挂起）。
+返回值是完整的 MCP CallToolResult，需要从 \`result.content[0].text\` 取文本内容。
 
 ## 代码结构（必须遵循）
 
@@ -163,7 +186,7 @@ module.exports = {
         const limit = args.limit || 10;
         const url = GITHUB_API + "/repos/" + args.owner + "/" + args.repo
           + "/issues?state=open&per_page=" + limit;
-        const resp = fetch(url, { headers });
+    const resp = fetchSync(url, { headers });
         if (!resp.ok) return "GitHub API error (" + resp.status + "): " + resp.body;
 
         const issues = resp.json();
@@ -176,7 +199,7 @@ module.exports = {
       case "get_issue": {
         const url = GITHUB_API + "/repos/" + args.owner + "/" + args.repo
           + "/issues/" + args.number;
-        const resp = fetch(url, { headers });
+        const resp = fetchSync(url, { headers });
         if (!resp.ok) return "GitHub API error (" + resp.status + "): " + resp.body;
 
         const issue = resp.json();
@@ -222,7 +245,7 @@ module.exports = {
 ## 常见错误
 
 ### "xxx is not defined"
-沙盒中没有 Node.js API。不能用 \`require\`、\`Buffer\` 等。可用 \`console.log\`、\`fetch\`、\`getSkill\`。
+沙盒中没有 Node.js API。不能用 \`require\`、\`Buffer\` 等。可用 \`console.log\`、\`fetchSync\`、\`getSkill\`、\`callTool\`。
 
 ### "Script execution timed out" / "interrupted"
 callTool 中的操作超过 30 秒。优化请求或减少循环次数。
@@ -240,5 +263,6 @@ callTool 中的操作超过 30 秒。优化请求或减少循环次数。
 - **错误信息要人类可读** — agent 会将 tool 返回值传递给用户，确保错误信息有上下文
 - **参数要有 description** — inputSchema 中每个属性都应有 description 字段
 - **幂等优先** — 尽量设计幂等操作，多次调用不产生副作用
+- **支持批量输入** — 若操作天然支持批量（如查询多个 IP、创建多条记录），inputSchema 应接受数组参数，一次调用处理多条数据，减少 tool 调用轮次和整体开销
 - **先只读后写入** — 先实现 list/get 类 tool，验证 API 连通后再加 create/update/delete
 `;

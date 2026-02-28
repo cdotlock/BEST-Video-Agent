@@ -74,6 +74,7 @@ export function useVideoChat(
   onSessionCreated: (sessionId: string) => void,
   onRefreshNeeded: () => void,
   autoMessage?: string,
+  model?: string,
 ): UseVideoChatReturn {
   const [activeTool, setActiveTool] = useState<ActiveToolInfo | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,6 +156,7 @@ export function useVideoChat(
       };
       if (sid) payload.session_id = sid;
       if (images?.length) payload.images = images;
+      if (model) payload.model = model;
 
       const result = await fetchJson<{ task_id: string; session_id: string }>(
         "/api/video/tasks",
@@ -181,7 +183,7 @@ export function useVideoChat(
       stream.setIsSending(false);
       stream.activeSendRef.current = false;
     }
-  }, [stream, userName, videoContext, preloadMcps, skills, generateTitle]);
+  }, [stream, userName, videoContext, preloadMcps, skills, generateTitle, model]);
 
   const sendMessage = useCallback(async (images?: string[]) => {
     const text = stream.input.trim();

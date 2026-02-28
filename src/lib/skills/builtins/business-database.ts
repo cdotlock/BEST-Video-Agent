@@ -25,8 +25,7 @@ requires_mcps:
 
 - \`biz_db__list_tables\` — 列出所有业务表（你的表 + 全局表）
 - \`biz_db__describe_table\` — 查看表结构（列名、类型、是否可空）
-- \`biz_db__query\` — 执行 SELECT 查询，返回 JSON
-- \`biz_db__execute\` — 执行 DDL/DML（CREATE TABLE、INSERT、UPDATE、DELETE 等）
+- \`biz_db__sql\` — 执行任意 SQL。读（SELECT/WITH）返回 JSON 行，写（INSERT/UPDATE/DELETE/DDL）返回影响行数
 - \`biz_db__upgrade_global\` — 将你的表升级为全局表（不可逆）
 - \`biz_db__list_global_tables\` — 列出全局表
 
@@ -133,8 +132,8 @@ ALTER TABLE customers DROP COLUMN phone;
 
 ### 操作安全
 
-- **先查后改** — 操作数据前先用 \`biz_db__query\` 确认当前状态
-- **操作后确认** — 执行 DDL/DML 后用 \`biz_db__describe_table\` 或 \`biz_db__query\` 验证结果
+- **先查后改** — 操作数据前先用 \`biz_db__sql\` SELECT 确认当前状态
+- **操作后确认** — 执行 DDL/DML 后用 \`biz_db__describe_table\` 或 \`biz_db__sql\` SELECT 验证结果
 - **告知用户** — 对数据的任何修改都应先告知用户并获得确认
 - **DDL 谨慎** — DROP TABLE、DROP COLUMN 等操作不可逆，务必先确认
 - **事务安全** — 单条 SQL 自动在事务中执行，无需手动 BEGIN/COMMIT

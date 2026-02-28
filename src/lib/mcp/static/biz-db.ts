@@ -51,31 +51,17 @@ export const bizDbMcp: McpProvider = {
         },
       },
       {
-        name: "query",
+        name: "sql",
         description:
-          "Run a read-only SQL query (SELECT) and return results as JSON rows.",
+          "Run any SQL on the business PostgreSQL database. " +
+          "Reads (SELECT / WITH) return JSON rows. " +
+          "Writes (INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, TRUNCATE) return affected row count.",
         inputSchema: {
           type: "object" as const,
           properties: {
             sql: {
               type: "string",
-              description: "SQL SELECT statement",
-            },
-          },
-          required: ["sql"],
-        },
-      },
-      {
-        name: "execute",
-        description:
-          "Execute a SQL statement (DDL or DML) on the business PostgreSQL database. " +
-          "Supports: CREATE TABLE, ALTER TABLE, DROP TABLE, INSERT, UPDATE, DELETE, TRUNCATE.",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            sql: {
-              type: "string",
-              description: "SQL statement to execute",
+              description: "SQL statement",
             },
           },
           required: ["sql"],
@@ -155,39 +141,38 @@ export const bizDbMcp: McpProvider = {
         return json(results);
       }
 
-      case "query": {
+      case "sql": {
         const sql = String(args.sql);
-        console.log("[biz_db query] input:", sql);
-        const check = guardQuery(sql);
-        if (!check.ok) return text(check.reason);
+        const normalized = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().toUpperCase();
+        const isRead = normalized.startsWith("SELECT") || normalized.startsWith("WITH");
 
-        // Read-only: resolve existing mappings, no auto-create
-        const map = await buildRewriteMap(userName, sql, false);
-        const rewritten = applySqlRewrite(sql, map);
-        console.log("[biz_db query] rewritten:", rewritten);
-        const result = await bizPool.query(rewritten);
-        return json({ rows: result.rows, rowCount: result.rowCount });
-      }
+        if (isRead) {
+          console.log("[biz_db sql/read] input:", sql);
+          const check = guardQuery(sql);
+          if (!check.ok) return text(check.reason);
 
-      case "execute": {
-        const sql = String(args.sql);
-        console.log("[biz_db execute] input:", sql);
-        const check = guardExecute(sql);
-        if (!check.ok) return text(check.reason);
+          const map = await buildRewriteMap(userName, sql, false);
+          const rewritten = applySqlRewrite(sql, map);
+          console.log("[biz_db sql/read] rewritten:", rewritten);
+          const result = await bizPool.query(rewritten);
+          return json({ rows: result.rows, rowCount: result.rowCount });
+        } else {
+          console.log("[biz_db sql/write] input:", sql);
+          const check = guardExecute(sql);
+          if (!check.ok) return text(check.reason);
 
-        // Write: auto-create mappings for new tables
-        const map = await buildRewriteMap(userName, sql, true);
-        const rewritten = applySqlRewrite(sql, map);
-        console.log("[biz_db execute] final SQL:", rewritten);
-        const result = await bizPool.query(rewritten);
+          const map = await buildRewriteMap(userName, sql, true);
+          const rewritten = applySqlRewrite(sql, map);
+          console.log("[biz_db sql/write] final SQL:", rewritten);
+          const result = await bizPool.query(rewritten);
 
-        // Clean up mappings for dropped tables
-        const dropped = extractDroppedTableNames(sql);
-        if (dropped.length > 0) {
-          await deleteMappings(userName, dropped);
+          const dropped = extractDroppedTableNames(sql);
+          if (dropped.length > 0) {
+            await deleteMappings(userName, dropped);
+          }
+
+          return text(`OK — ${result.rowCount ?? 0} row(s) affected. Command: ${result.command}`);
         }
-
-        return text(`OK — ${result.rowCount ?? 0} row(s) affected. Command: ${result.command}`);
       }
 
       case "upgrade_global": {

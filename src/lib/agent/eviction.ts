@@ -16,8 +16,6 @@ const EPHEMERAL = new Set([
   "skills__import", "skills__set_production",
   // ui
   "ui__request_upload",
-  // biz_db
-  "biz_db__execute",
   // mcp_manager
   "mcp_manager__load", "mcp_manager__unload", "mcp_manager__create",
   "mcp_manager__update_code", "mcp_manager__toggle", "mcp_manager__delete",
@@ -82,11 +80,16 @@ function generateSummary(
     return `subagent(${model}): 返回 ${result.length} 字符文本`;
   }
 
-  if (toolName === "biz_db__query") {
+  if (toolName === "biz_db__sql") {
     const parsed = asRecord(tryParseJson(result));
-    const rows = Array.isArray(parsed?.rows) ? parsed.rows.length : "?";
+    if (parsed?.rows) {
+      const rows = Array.isArray(parsed.rows) ? parsed.rows.length : "?";
+      const sql = truncate(String(args?.sql ?? ""), 60);
+      return `biz_db.sql("${sql}"): ${rows} 行`;
+    }
+    // write-mode: short confirmation text
     const sql = truncate(String(args?.sql ?? ""), 60);
-    return `biz_db.query("${sql}"): ${rows} 行`;
+    return `biz_db.sql("${sql}"): ${truncate(result, 40)}`;
   }
 
   if (toolName === "mcp_manager__get_code") {

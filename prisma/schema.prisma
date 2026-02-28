@@ -48,9 +48,10 @@ model ChatSession {
   title        String?
   userId       String
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages     ChatMessage[]
-  keyResources KeyResource[]
-  tasks        Task[]
+  messages         ChatMessage[]
+  keyResources     KeyResource[]
+  tasks            Task[]
+  imageGenerations ImageGeneration[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -84,6 +85,37 @@ model KeyResource {
   createdAt DateTime    @default(now())
 
   @@index([sessionId])
+}
+
+/// ImageGeneration — 图片生成实体，session 级别
+/// 主记录只保留身份 + 指针，所有可变数据存 ImageGenerationVersion
+model ImageGeneration {
+  id              String                   @id @default(cuid())
+  sessionId       String
+  session         ChatSession              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  key             String                   // LLM 指定的语义 key，session 内唯一
+  currentVersion  Int                      @default(0)
+  versions        ImageGenerationVersion[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@unique([sessionId, key])
+  @@index([sessionId])
+}
+
+/// ImageGenerationVersion — 不可变的版本快照
+model ImageGenerationVersion {
+  id         String          @id @default(cuid())
+  imageGenId String
+  imageGen   ImageGeneration @relation(fields: [imageGenId], references: [id], onDelete: Cascade)
+  version    Int
+  prompt     String
+  imageUrl   String?         // 生成完成前为 null
+  refUrls    String[]
+  createdAt  DateTime        @default(now())
+
+  @@unique([imageGenId, version])
+  @@index([imageGenId])
 }
 
 /// McpServer — 动态 MCP，JS 代码存储于 DB，运行于 QuickJS WebAssembly 沙盒

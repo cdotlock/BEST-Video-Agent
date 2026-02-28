@@ -27,13 +27,19 @@ requires_mcps:
 
 ## 可用工具
 
-- \`subagent__run_text\` — 将 prompt 发送给指定模型执行，返回原始文本结果
+- \`subagent__run_text\` — 将 prompt 发送给指定模型执行，返回文本结果。支持可选的 JSON Schema 校验 + 自动重试。
 
 ### 参数
 
 - \`prompt\`（必填）— 要执行的 prompt（通常来自 \`langfuse__compile_prompt\` 的输出）
 - \`model\`（必填）— 模型名称，**没有默认值**，必须由调用方明确指定
 - \`imageUrls\`（可选）— 图片 URL 数组，用于多模态任务（如看图生成描述）
+- \`outputSchema\`（可选）— JSON Schema 对象。传入后 subagent 会自动校验输出：
+  - 自动剥离 markdown 代码围栏（\\\`\\\`\\\`json）
+  - 解析 JSON 并用 schema 校验
+  - 校验失败时自动带错误上下文重试（最多 maxRetries 次）
+  - 校验通过时返回结果中 \`validated=true\`，数据保证符合 schema
+- \`maxRetries\`（可选，默认 2，最大 5）— 含首次在内的最大尝试次数
 
 ## 模型选择
 
@@ -71,15 +77,53 @@ subagent__run_text({
 → "夕阳西下的校园走廊，橙红色的光线透过窗户..."
 \\\`\\\`\\\`
 
+### 带 Schema 校验的 JSON 生成（推荐）
+
+当 subagent 需要输出结构化 JSON 时，传入 outputSchema 可保证结果符合预期格式：
+
+\\\`\\\`\\\`
+subagent__run_text({
+  tasks: [{
+    prompt: compiledPrompt,
+    model: "google/gemini-3.1-pro-preview",
+    outputSchema: {
+      type: "object",
+      properties: {
+        shots: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              shot_id: { type: "string" },
+              type: { type: "string", enum: ["public", "branch_1", "branch_2", "branch_3"] },
+              scene_desc: { type: "string", minLength: 1 }
+            },
+            required: ["shot_id", "type", "scene_desc"]
+          },
+          minItems: 1
+        }
+      },
+      required: ["shots"]
+    },
+    maxRetries: 3
+  }]
+})
+→ { status: "ok", result: "{...}", validated: true, attempts: 1 }
+\\\`\\\`\\\`
+
+校验失败时平台层自动重试，对主控透明。重试 prompt 会追加具体的校验错误信息，确保定向修正而非盲目重试。
+
 ### 多模态任务
 
 需要 subagent 分析图片时，传入 imageUrls：
 
 \\\`\\\`\\\`
 subagent__run_text({
-  prompt: "描述这张图片中人物的动作和表情",
-  model: "google/gemini-3-pro-image-preview",
-  imageUrls: ["https://oss.example.com/scene.png"]
+  tasks: [{
+    prompt: "描述这张图片中人物的动作和表情",
+    model: "google/gemini-3-pro-image-preview",
+    imageUrls: ["https://oss.example.com/scene.png"]
+  }]
 })
 \\\`\\\`\\\`
 
@@ -102,5 +146,6 @@ subagent__run_text({
 - Subagent 调用是无状态的，每次调用独立，无对话历史
 - 不提供默认模型，必须显式指定
 - 复用主控的 LLM 代理（LLM_API_KEY / LLM_BASE_URL），只是模型不同
-- 返回值是原始文本，主控负责解析和后续处理
+- 未传 outputSchema 时返回原始文本；传了 schema 时返回经过校验的 JSON 字符串
+- **凡是需要 subagent 输出结构化 JSON 的场景，必须传 outputSchema**
 `;

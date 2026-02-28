@@ -42,6 +42,8 @@ export function useChat(
   onTitleChange: (title: string) => void,
   onRefreshNeeded: () => void,
   onStatusChange: (status: AgentStatus) => void,
+  /** Current model id to use for requests. */
+  model?: string,
 ): UseChatReturn {
   const [title, setTitle] = useState<string | null>(null);
 
@@ -122,6 +124,7 @@ export function useChat(
       const payload: Record<string, unknown> = { message: text || "(image)", user: userName };
       if (sid) payload.session_id = sid;
       if (hasImages) payload.images = images;
+      if (model) payload.model = model;
 
       const result = await fetchJson<{ task_id: string; session_id: string }>(
         "/api/tasks",
@@ -148,7 +151,7 @@ export function useChat(
       stream.setIsSending(false);
       stream.activeSendRef.current = false;
     }
-  }, [stream, userName, generateTitle]);
+  }, [stream, userName, generateTitle, model]);
 
   /* ---- Return ---- */
 
