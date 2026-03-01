@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       // 心跳计时器，每 30 秒发送一次
       const heartbeatInterval = setInterval(() => {
         if (!ac.signal.aborted) {
-          send(": heartbeat\n\n");
+          send(toSse(Date.now(), "heartbeat", {}));
         }
       }, 30000);
 

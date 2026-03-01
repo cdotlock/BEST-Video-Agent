@@ -175,6 +175,11 @@ export function useTaskStream(
         lastMessageTime = Date.now();
       };
 
+      // 心跳事件监听器
+      es.addEventListener("heartbeat", () => {
+        touchLastMessageTime();
+      });
+
       /* ---- Core events ---- */
 
       es.addEventListener("session", (e: MessageEvent) => {

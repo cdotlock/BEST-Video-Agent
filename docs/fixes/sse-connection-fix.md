@@ -52,8 +52,15 @@ function pushEvent(taskId: string, type: string, data: Prisma.InputJsonValue): P
 **问题**：长时间无事件时（如复杂任务执行中），无法检测连接是否仍然存活。
 
 **修复**：
-- 服务端：每 30 秒发送心跳（SSE comment）
+- 服务端：每 30 秒发送心跳（命名事件 `heartbeat`）
 - 客户端：每 15 秒检查一次，如果 90 秒内没有收到任何消息（包括心跳），认为连接已死，主动关闭并显示错误
+
+### 5. 心跳机制 bug
+**问题**：服务端发送的心跳是 SSE 注释 (`: heartbeat\n\n`)，但 SSE 注释不会触发任何 EventSource 事件，导致客户端无法更新 `lastMessageTime`，最终误报超时。
+
+**修复**：
+- 服务端：将心跳改为命名事件 `toSse(Date.now(), "heartbeat", {})`
+- 客户端：添加 `heartbeat` 事件监听器，调用 `touchLastMessageTime()`
 
 ## 修改清单
 
