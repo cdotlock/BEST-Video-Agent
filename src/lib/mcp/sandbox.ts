@@ -198,8 +198,31 @@ export class SandboxManager {
       result.error.dispose();
       context.dispose();
       runtime.dispose();
+
+      // Extract detailed error info
+      let errorMsg = String(err);
+      if (typeof err === "object" && err !== null) {
+        const errObj = err as Record<string, unknown>;
+        const message = errObj.message ?? errObj.toString();
+        const stack = errObj.stack;
+        
+        if (stack && typeof stack === "string") {
+          // QuickJS stack includes line numbers
+          errorMsg = stack;
+        } else if (message) {
+          errorMsg = String(message);
+        }
+      }
+
+      // Calculate user code line offset (WRAPPER_PREFIX line count)
+      const wrapperLines = WRAPPER_PREFIX.split("\n").length - 1;
+      const codeLines = code.split("\n");
+      
       throw new Error(
-        `Failed to load sandbox "${name}": ${String(err)}`,
+        `Failed to load sandbox "${name}":\n${errorMsg}\n\n` +
+        `Hint: User code starts at line ${wrapperLines + 1}. ` +
+        `If error shows line N, your code is at line ${wrapperLines + 1 < 10 ? "N-" + wrapperLines : "(N - " + wrapperLines + ")"}.\n` +
+        `First few lines of your code:\n${codeLines.slice(0, 5).map((l, i) => `  ${i + 1}: ${l}`).join("\n")}`,
       );
     }
     result.value.dispose();
@@ -253,7 +276,17 @@ export class SandboxManager {
         if (result.error) {
           const err: unknown = inst.context.dump(result.error);
           result.error.dispose();
-          throw new Error(`listTools failed: ${String(err)}`);
+          
+          let errorMsg = String(err);
+          if (typeof err === "object" && err !== null) {
+            const errObj = err as Record<string, unknown>;
+            errorMsg = String(errObj.stack ?? errObj.message ?? err);
+          }
+          
+          throw new Error(
+            `listTools failed in sandbox "${mcpName}":\n${errorMsg}\n\n` +
+            `Hint: Check that module.exports.tools is a valid array.`
+          );
         }
         const json = inst.context.getString(result.value);
         result.value.dispose();
@@ -296,7 +329,17 @@ export class SandboxManager {
         if (result.error) {
           const err: unknown = inst.context.dump(result.error);
           result.error.dispose();
-          throw new Error(`callTool("${toolName}") failed: ${String(err)}`);
+          
+          let errorMsg = String(err);
+          if (typeof err === "object" && err !== null) {
+            const errObj = err as Record<string, unknown>;
+            const stack = errObj.stack ?? errObj.message ?? err;
+            errorMsg = String(stack);
+          }
+          
+          throw new Error(
+            `callTool("${toolName}") failed in sandbox "${mcpName}":\n${errorMsg}`
+          );
         }
 
         const raw: unknown = inst.context.dump(result.value);
@@ -313,7 +356,16 @@ export class SandboxManager {
           if (readResult.error) {
             const err: unknown = inst.context.dump(readResult.error);
             readResult.error.dispose();
-            throw new Error(`callTool("${toolName}") async resolution failed: ${String(err)}`);
+            
+            let errorMsg = String(err);
+            if (typeof err === "object" && err !== null) {
+              const errObj = err as Record<string, unknown>;
+              errorMsg = String(errObj.stack ?? errObj.message ?? err);
+            }
+            
+            throw new Error(
+              `callTool("${toolName}") async resolution failed in sandbox "${mcpName}":\n${errorMsg}`
+            );
           }
           const resolved = inst.context.getString(readResult.value);
           readResult.value.dispose();
