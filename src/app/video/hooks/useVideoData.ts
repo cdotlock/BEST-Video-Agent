@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJson } from "@/app/components/client-utils";
 import type {
   EpisodeSummary,
-  DomainResource,
   DomainResources,
 } from "../types";
 
@@ -13,12 +12,9 @@ export interface UseVideoDataReturn {
   isLoadingEpisodes: boolean;
   selectedEpisode: EpisodeSummary | null;
   selectEpisode: (ep: EpisodeSummary | null) => void;
-  storyboardVideos: DomainResource[];
-  isLoadingStoryboard: boolean;
   resources: DomainResources | null;
   isLoadingResources: boolean;
   refreshEpisodes: () => Promise<EpisodeSummary[]>;
-  refreshStoryboard: () => Promise<void>;
   refreshResources: () => Promise<void>;
   refreshAll: () => Promise<void>;
   uploadEpisode: (scriptKey: string, scriptName: string | null, content: string | null) => Promise<void>;
@@ -31,8 +27,6 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
   const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState<EpisodeSummary | null>(null);
-  const [storyboardVideos, setStoryboardVideos] = useState<DomainResource[]>([]);
-  const [isLoadingStoryboard, setIsLoadingStoryboard] = useState(false);
   const [resources, setResources] = useState<DomainResources | null>(null);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,24 +46,6 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
       setIsLoadingEpisodes(false);
     }
   }, [novelId]);
-
-  const refreshStoryboard = useCallback(async () => {
-    if (!selectedEpisode) {
-      setStoryboardVideos([]);
-      return;
-    }
-    setIsLoadingStoryboard(true);
-    try {
-      const data = await fetchJson<DomainResource[]>(
-        `/api/video/episodes/${encodeURIComponent(selectedEpisode.id)}/storyboard`,
-      );
-      setStoryboardVideos(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load storyboard");
-    } finally {
-      setIsLoadingStoryboard(false);
-    }
-  }, [selectedEpisode]);
 
   const refreshResources = useCallback(async () => {
     if (!selectedEpisode) {
@@ -94,12 +70,11 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
   }, [selectedEpisode, novelId]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshEpisodes(), refreshStoryboard(), refreshResources()]);
-  }, [refreshEpisodes, refreshStoryboard, refreshResources]);
+    await Promise.all([refreshEpisodes(), refreshResources()]);
+  }, [refreshEpisodes, refreshResources]);
 
   const selectEpisode = useCallback((ep: EpisodeSummary | null) => {
     setSelectedEpisode(ep);
-    setStoryboardVideos([]);
     setResources(null);
   }, []);
 
@@ -129,10 +104,9 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
           `/api/video/episodes/${encodeURIComponent(scriptId)}`,
           { method: "DELETE" },
         );
-        // Deselect if deleted EP was selected
+      // Deselect if deleted EP was selected
       if (selectedEpisode?.id === scriptId) {
           setSelectedEpisode(null);
-          setStoryboardVideos([]);
           setResources(null);
         }
         await refreshEpisodes();
@@ -148,25 +122,21 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
     void refreshEpisodes();
   }, [refreshEpisodes]);
 
-  // Load storyboard + resources when episode changes
+  // Load resources when episode changes
   useEffect(() => {
     if (selectedEpisode) {
-      void refreshStoryboard();
       void refreshResources();
     }
-  }, [selectedEpisode, refreshStoryboard, refreshResources]);
+  }, [selectedEpisode, refreshResources]);
 
   return {
     episodes,
     isLoadingEpisodes,
     selectedEpisode,
     selectEpisode,
-    storyboardVideos,
-    isLoadingStoryboard,
     resources,
     isLoadingResources,
     refreshEpisodes,
-    refreshStoryboard,
     refreshResources,
     refreshAll,
     uploadEpisode,

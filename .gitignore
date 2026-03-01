@@ -54,3 +54,6 @@ src/generated
 *.tsbuildinfo
 next-env.d.ts
 agent-forge.tar.gz
+
+# database backups
+/backups/

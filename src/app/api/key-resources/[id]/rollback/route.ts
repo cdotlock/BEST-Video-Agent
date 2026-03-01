@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { rollback, getById } from "@/lib/services/image-generation-service";
+import { rollback, getById } from "@/lib/services/key-resource-service";
 import { pushMessages } from "@/lib/services/chat-session-service";
 
 type Params = { params: Promise<{ id: string }> };
@@ -9,7 +9,7 @@ const BodySchema = z.object({
   version: z.number().int().min(1),
 });
 
-/** POST /api/image-generations/:id/rollback */
+/** POST /api/key-resources/:id/rollback */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
@@ -26,7 +26,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
-    // Need sessionId for append log
     const before = await getById(id);
     if (!before) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -34,10 +33,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const result = await rollback(id, parsed.data.version);
 
-    // Append log to session
     await pushMessages(before.sessionId, [{
       role: "user",
-      content: `[系统通知] 用户手动操作了图片 "${result.key}"：回滚到版本 v${result.version}。当前状态：prompt="${result.prompt}" url=${result.imageUrl ?? "none"}`,
+      content: `[系统通知] 用户手动操作了资源 "${result.key}"：回滚到版本 v${result.version}。当前状态：prompt="${result.prompt ?? "N/A"}" url=${result.url ?? "none"}`,
+      hidden: true,
     }]);
 
     return NextResponse.json(result);

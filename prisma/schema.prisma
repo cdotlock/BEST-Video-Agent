@@ -68,23 +68,43 @@ model ChatMessage {
   images     String[]    // 附带的图片 URL 列表（视觉模型用）
   toolCalls  Json?       // OpenAI tool_calls 数组
   toolCallId String?
+  hidden     Boolean     @default(false)
   createdAt  DateTime    @default(now())
 
   @@index([sessionId, createdAt])
 }
 
-/// KeyResource — 关键资源，LLM 通过 present 工具展示的图片/视频/JSON，会话隔离
+/// KeyResource — 关键资源，版本化，LLM 通过 present 工具展示的图片/视频/JSON，会话隔离
 model KeyResource {
-  id        String      @id @default(cuid())
-  sessionId String
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  mediaType String      // "image" | "video" | "json"
-  url       String?
-  data      Json?
-  title     String?
-  createdAt DateTime    @default(now())
+  id             String               @id @default(cuid())
+  sessionId      String
+  session        ChatSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  key            String
+  mediaType      String               // "image" | "video" | "json"
+  currentVersion Int                  @default(0)
+  versions       KeyResourceVersion[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
+  @@unique([sessionId, key])
   @@index([sessionId])
+}
+
+/// KeyResourceVersion — 不可变的版本快照
+model KeyResourceVersion {
+  id            String      @id @default(cuid())
+  keyResourceId String
+  keyResource   KeyResource @relation(fields: [keyResourceId], references: [id], onDelete: Cascade)
+  version       Int
+  title         String?
+  url           String?
+  data          Json?
+  prompt        String?
+  refUrls       String[]
+  createdAt     DateTime    @default(now())
+
+  @@unique([keyResourceId, version])
+  @@index([keyResourceId])
 }
 
 /// ImageGeneration — 图片生成实体，session 级别

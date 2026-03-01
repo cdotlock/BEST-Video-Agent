@@ -14,4 +14,5 @@ export interface ChatMessage {
   images?: string[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  hidden?: boolean;
 }

@@ -1,9 +1,8 @@
 import { z } from "zod";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
 import type { McpProvider } from "../types";
-import { callFcGenerateImage } from "@/lib/services/fc-image-client";
 import { getCurrentSessionId } from "@/lib/request-context";
-import * as imageGenService from "@/lib/services/image-generation-service";
+import * as keyResourceService from "@/lib/services/key-resource-service";
 import { createResource } from "@/lib/domain/resource-service";
 
 function text(t: string): CallToolResult {
@@ -13,17 +12,6 @@ function text(t: string): CallToolResult {
 function json(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
-
-function getFcVideoConfig() {
-  const videoUrl = process.env.FC_GENERATE_VIDEO_URL;
-  const videoToken = process.env.FC_GENERATE_VIDEO_TOKEN;
-  return { videoUrl, videoToken };
-}
-
-const FcResultSchema = z.object({
-  result: z.string().optional(),
-  error: z.string().optional(),
-});
 
 const GenerateImageParams = z.object({
   items: z.array(
@@ -43,8 +31,13 @@ const GenerateImageParams = z.object({
 const GenerateVideoParams = z.object({
   items: z.array(
     z.object({
-      imageUrl: z.string().url(),
+      key: z.string().min(1),
       prompt: z.string().min(1),
+      sourceImageUrl: z.string().url().optional(),
+      category: z.string().min(1),
+      scopeType: z.enum(["novel", "script"]),
+      scopeId: z.string().min(1),
+      title: z.string().optional(),
     }),
   ).min(1),
 });
@@ -89,20 +82,25 @@ export const videoMgrMcp: McpProvider = {
       {
         name: "generate_video",
         description:
-          "Generate video(s) from image(s) and motion prompt(s) concurrently (via FC). Returns an array of results with status (ok/error) and video URL. For a single video, pass a one-element array.",
+          "Store video generation prompt(s) for storyboard shots. Does NOT generate actual video — only persists the prompt and optional source image URL as a video resource. Users can view prompts in the UI and trigger actual generation later.",
         inputSchema: {
           type: "object" as const,
           properties: {
             items: {
               type: "array",
-              description: "Array of video generation tasks",
+              description: "Array of video prompt entries. Each auto-creates a domain_resources entry with mediaType=video.",
               items: {
                 type: "object",
                 properties: {
-                  imageUrl: { type: "string", description: "Source image URL to animate" },
-                  prompt: { type: "string", description: "Text prompt describing the desired motion/animation" },
+                  key: { type: "string", description: "Unique semantic key for this video within the session (e.g. video_shot_1_3, video_scene_2_opening)" },
+                  prompt: { type: "string", description: "Motion/animation prompt describing the desired video effect" },
+                  sourceImageUrl: { type: "string", description: "Optional source image URL (typically from generate_image output) to animate" },
+                  category: { type: "string", description: "Resource category for UI grouping (e.g. '分镜视频', '片头', '转场')" },
+                  scopeType: { type: "string", enum: ["novel", "script"], description: "Scope level" },
+                  scopeId: { type: "string", description: "ID of the scope entity" },
+                  title: { type: "string", description: "Human-readable label shown in resource panel" },
                 },
-                required: ["imageUrl", "prompt"],
+                required: ["key", "prompt", "category", "scopeType", "scopeId"],
               },
             },
           },
@@ -125,7 +123,7 @@ export const videoMgrMcp: McpProvider = {
         const { items } = GenerateImageParams.parse(args);
         const results = await Promise.allSettled(
           items.map(({ key, prompt, referenceImageUrls }) =>
-            imageGenService.generateImage({
+            keyResourceService.generateImage({
               sessionId,
               key,
               prompt,
@@ -155,7 +153,7 @@ export const videoMgrMcp: McpProvider = {
                 mediaType: "image",
                 title: item.title ?? undefined,
                 url: gen.imageUrl ?? undefined,
-                imageGenId: gen.id,
+                keyResourceId: gen.id,
               });
             } catch (e) {
               console.error(`[video_mgr] domain_resources writeback failed for key=${item.key}:`, e);
@@ -164,7 +162,7 @@ export const videoMgrMcp: McpProvider = {
               index: i,
               status: "ok" as const,
               key: gen.key,
-              imageGenId: gen.id,
+              keyResourceId: gen.id,
               imageUrl: gen.imageUrl,
               version: gen.version,
             };
@@ -174,32 +172,40 @@ export const videoMgrMcp: McpProvider = {
       }
 
       case "generate_video": {
-        const fc = getFcVideoConfig();
-        if (!fc.videoUrl || !fc.videoToken) {
-          return text("未配置 FC 视频生成服务 (FC_GENERATE_VIDEO_URL, FC_GENERATE_VIDEO_TOKEN)");
-        }
         const { items } = GenerateVideoParams.parse(args);
-        const results = await Promise.allSettled(
-          items.map(async ({ imageUrl, prompt }) => {
-            const res = await fetch(fc.videoUrl!, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${fc.videoToken}`,
-              },
-              body: JSON.stringify({ action: "generate", imageUrl, prompt }),
-            });
-            const data: unknown = await res.json();
-            const parsed = FcResultSchema.parse(data);
-            if (!res.ok || parsed.error) throw new Error(parsed.error ?? res.statusText);
-            if (!parsed.result) throw new Error("FC returned no result");
-            return parsed.result;
+        const vidOutput = await Promise.all(
+          items.map(async (item, i) => {
+            try {
+              const resourceId = await createResource({
+                scopeType: item.scopeType,
+                scopeId: item.scopeId,
+                category: item.category,
+                mediaType: "video",
+                title: item.title ?? undefined,
+                data: {
+                  key: item.key,
+                  prompt: item.prompt,
+                  sourceImageUrl: item.sourceImageUrl ?? null,
+                },
+              });
+              return {
+                index: i,
+                status: "ok" as const,
+                key: item.key,
+                resourceId,
+                prompt: item.prompt,
+                sourceImageUrl: item.sourceImageUrl ?? null,
+                note: "Prompt stored. No actual video generation — user can trigger later.",
+              };
+            } catch (e) {
+              return {
+                index: i,
+                status: "error" as const,
+                key: item.key,
+                error: e instanceof Error ? e.message : String(e),
+              };
+            }
           }),
-        );
-        const vidOutput = results.map((r, i) =>
-          r.status === "fulfilled"
-            ? { index: i, status: "ok" as const, videoUrl: r.value }
-            : { index: i, status: "error" as const, error: r.reason instanceof Error ? r.reason.message : String(r.reason) },
         );
         return json(vidOutput);
       }

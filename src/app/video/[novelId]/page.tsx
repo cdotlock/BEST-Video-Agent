@@ -6,7 +6,6 @@ import { ConfigProvider, theme as antTheme } from "antd";
 import { useSessions } from "@/app/components/hooks/useSessions";
 import { useVideoData } from "../hooks/useVideoData";
 import { EpisodeList } from "../components/EpisodeList";
-import { StoryboardView } from "../components/StoryboardView";
 import { ResourcePanel } from "../components/ResourcePanel";
 import { VideoChat } from "../components/VideoChat";
 import type { VideoContext } from "../types";
@@ -133,30 +132,18 @@ setAutoMessage("请根据EP内容，执行全部视频工作流");
           onDeleteSession={(id) => void handleDeleteSession(id)}
         />
 
-        {/* Center — Storyboard (left) + Chat (right), side by side */}
-        <section className="flex min-w-0 flex-1">
-          {data.storyboardVideos.length > 0 && (
-            <div className="h-full w-64 shrink-0 overflow-y-auto border-r border-slate-800">
-              <StoryboardView
-                videos={data.storyboardVideos}
-                isLoading={data.isLoadingStoryboard}
-                scriptKey={data.selectedEpisode?.scriptKey ?? null}
-                episodeId={data.selectedEpisode?.id ?? null}
-              />
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <VideoChat
-              key={chatKey}
-              initialSessionId={currentSessionId}
-              videoContext={videoContext}
-              preloadMcps={DEFAULT_MCPS}
-              skills={DEFAULT_SKILLS}
-              onSessionCreated={handleSessionCreated}
-              onRefreshNeeded={handleRefreshNeeded}
-              autoMessage={autoMessage}
-            />
-          </div>
+        {/* Center — Chat */}
+        <section className="min-w-0 flex-1">
+          <VideoChat
+            key={chatKey}
+            initialSessionId={currentSessionId}
+            videoContext={videoContext}
+            preloadMcps={DEFAULT_MCPS}
+            skills={DEFAULT_SKILLS}
+            onSessionCreated={handleSessionCreated}
+            onRefreshNeeded={handleRefreshNeeded}
+            autoMessage={autoMessage}
+          />
         </section>
 
         {/* Right panel — Resources */}

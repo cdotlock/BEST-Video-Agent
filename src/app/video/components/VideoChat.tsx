@@ -75,30 +75,32 @@ export function VideoChat({
   }
 
   return (
-    <div className="flex h-full flex-col bg-slate-950/60">
-      {/* Chat error */}
-      {chat.error && (
-        <Alert
-          type="error"
-          message={chat.error}
-          showIcon
-          closable
-          onClose={() => chat.setError(null)}
-          style={{ margin: "4px 8px 0" }}
-          banner
-        />
-      )}
+    <div className="flex h-full bg-slate-950/60">
+      {/* Chat column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Chat error */}
+        {chat.error && (
+          <Alert
+            type="error"
+            message={chat.error}
+            showIcon
+            closable
+            onClose={() => chat.setError(null)}
+            style={{ margin: "4px 8px 0" }}
+            banner
+          />
+        )}
 
-      {/* Messages */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <MessageList
-          messages={chat.messages}
-          isLoadingSession={chat.isLoadingSession}
-          error={null}
-          streamingReply={chat.streamingReply}
-          streamingTools={chat.streamingTools}
-        />
-      </div>
+        {/* Messages */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <MessageList
+            messages={chat.messages}
+            isLoadingSession={chat.isLoadingSession}
+            error={null}
+            streamingReply={chat.streamingReply}
+            streamingTools={chat.streamingTools}
+          />
+        </div>
 
       {/* Active tool indicator */}
       {chat.activeTool && (
@@ -218,6 +220,8 @@ export function VideoChat({
           </div>
         </div>
       </footer>
+      </div>
+
     </div>
   );
 }

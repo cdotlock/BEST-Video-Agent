@@ -53,8 +53,8 @@ export function ResourceDrawer({
         />
       }
     >
-      {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 8 }} />}
-      {notice && <Alert type="success" message={notice} showIcon style={{ marginBottom: 8 }} />}
+      {error && <Alert type="error" title={error} showIcon style={{ marginBottom: 8 }} />}
+      {notice && <Alert type="success" title={notice} showIcon style={{ marginBottom: 8 }} />}
 
       <div className="space-y-4">
         <section>

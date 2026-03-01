@@ -105,6 +105,7 @@ const RunTextParams = z.object({
       imageUrls: z.array(z.string().url()).optional(),
       outputSchema: z.record(z.string(), z.unknown()).optional(),
       maxRetries: z.number().int().min(1).max(5).optional(),
+      keyJsonTitle: z.string().min(1).optional(),
     }),
   ).min(1, "tasks array must not be empty"),
 });
@@ -155,6 +156,8 @@ interface TaskResult {
   validated?: boolean;
   /** Number of attempts (1 = first try succeeded). */
   attempts?: number;
+  /** Carried from task input — signals this result is a key JSON resource. */
+  keyJsonTitle?: string;
 }
 
 async function executeTask(
@@ -166,21 +169,22 @@ async function executeTask(
 
   // No schema → return raw text as before
   if (!task.outputSchema) {
-    return { status: "ok", result: raw };
+    return { status: "ok", result: raw, keyJsonTitle: task.keyJsonTitle };
   }
 
   const maxRetries = task.maxRetries ?? 2;
 
   // Attempt 1: validate the initial output
   let validation = validateOutput(raw, task.outputSchema);
-  if (validation.ok) {
-    return {
-      status: "ok",
-      result: JSON.stringify(validation.data),
-      validated: true,
-      attempts: 1,
-    };
-  }
+    if (validation.ok) {
+      return {
+        status: "ok",
+        result: JSON.stringify(validation.data),
+        validated: true,
+        attempts: 1,
+        keyJsonTitle: task.keyJsonTitle,
+      };
+    }
 
   // Retry loop with error context
   for (let attempt = 2; attempt <= maxRetries; attempt++) {
@@ -206,6 +210,7 @@ async function executeTask(
         result: JSON.stringify(validation.data),
         validated: true,
         attempts: attempt,
+        keyJsonTitle: task.keyJsonTitle,
       };
     }
   }
@@ -267,6 +272,12 @@ export const subagentMcp: McpProvider = {
                     description:
                       "Max total attempts (including first try) when outputSchema is set. Default 2, max 5.",
                     default: 2,
+                  },
+                  keyJsonTitle: {
+                    type: "string",
+                    description:
+                      "When set, the successful result is persisted as a key JSON resource with this title. " +
+                      "Same session + same title = upsert (latest version kept).",
                   },
                 },
                 required: ["prompt", "model"],

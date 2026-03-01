@@ -40,7 +40,7 @@ interface ImageGenDetail {
 /* ------------------------------------------------------------------ */
 
 export interface ImageDetailDrawerProps {
-  /** The ImageGeneration id to display. null = closed. */
+  /** The KeyResource id to display. null = closed. */
   imageGenId: string | null;
   onClose: () => void;
   /** Called after any mutation so parent can refresh. */
@@ -65,7 +65,7 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
   const fetchDetail = useCallback(async (id: string, silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const data = await fetchJson<ImageGenDetail>(`/api/image-generations/${id}`);
+      const data = await fetchJson<ImageGenDetail>(`/api/key-resources/${id}`);
       setDetail(data);
       const curVer = data.versions.find((v) => v.version === data.currentVersion);
       setEditPrompt(curVer?.prompt ?? "");
@@ -95,7 +95,7 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
     if (!detail || !promptDirty) return;
     setIsSavingPrompt(true);
     try {
-      await fetchJson(`/api/image-generations/${detail.id}`, {
+      await fetchJson(`/api/key-resources/${detail.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: editPrompt }),
@@ -116,7 +116,7 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
     setIsRegenerating(true);
     try {
       const promptOverride = promptDirty ? editPrompt : undefined;
-      await fetchJson(`/api/image-generations/${detail.id}/regenerate`, {
+      await fetchJson(`/api/key-resources/${detail.id}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(promptOverride ? { prompt: promptOverride } : {}),
@@ -136,7 +136,7 @@ export function ImageDetailDrawer({ imageGenId, onClose, onRefresh }: ImageDetai
     if (!detail) return;
     setRollingBackVersion(version);
     try {
-      await fetchJson(`/api/image-generations/${detail.id}/rollback`, {
+      await fetchJson(`/api/key-resources/${detail.id}/rollback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ version }),

@@ -51,7 +51,7 @@ export function UploadDialog({
           </Typography.Text>
         )}
         {uploadProgress ? (
-          <Alert type="info" message={uploadProgress} showIcon />
+          <Alert type="info" title={uploadProgress} showIcon />
         ) : (
           <Upload
             accept={dialog.accept || undefined}

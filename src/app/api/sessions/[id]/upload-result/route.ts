@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     content = `[文件上传取消] uploadId: ${uploadId}${error ? `\nerror: ${error}` : ""}`;
   }
 
-  await pushMessages(id, [{ role: "user", content }]);
+  await pushMessages(id, [{ role: "user", content, hidden: true }]);
 
   return NextResponse.json({ ok: true, uploadId });
 }

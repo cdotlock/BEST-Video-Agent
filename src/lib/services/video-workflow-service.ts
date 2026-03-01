@@ -137,27 +137,6 @@ export async function deleteEpisode(scriptId: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Storyboard (video resources)                                       */
-/* ------------------------------------------------------------------ */
-
-/**
- * Get video resources for the storyboard view.
- * Returns domain_resources with media_type="video" for this script.
- */
-export async function getStoryboardVideos(scriptId: string): Promise<DomainResource[]> {
-  const groups = await getResourcesByScope("script", scriptId);
-  const videos: DomainResource[] = [];
-  for (const g of groups) {
-    for (const item of g.items) {
-      if (item.mediaType === "video") {
-        videos.push(item);
-      }
-    }
-  }
-  return videos;
-}
-
-/* ------------------------------------------------------------------ */
 /*  Resources                                                          */
 /* ------------------------------------------------------------------ */
 

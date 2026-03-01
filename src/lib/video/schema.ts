@@ -26,7 +26,6 @@ const NOVEL_SCRIPTS_DDL = `CREATE TABLE IF NOT EXISTS "$TABLE" (
   script_key TEXT NOT NULL,
   script_name TEXT,
   script_content TEXT,
-  storyboard_raw TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 )`;
 

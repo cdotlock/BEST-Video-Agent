@@ -72,28 +72,18 @@ export async function listSessions(
   return rows;
 }
 
-export interface KeyResourceSummary {
-  id: string;
-  mediaType: string;
-  url: string | null;
-  data: unknown;
-  title: string | null;
-}
-
-/** Get a single session with its messages and key resources. */
+/** Get a single session with its messages. */
 export async function getSession(
   sessionId: string,
 ): Promise<{
   id: string;
   title: string | null;
   messages: ChatMessage[];
-  keyResources: KeyResourceSummary[];
 } | null> {
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
     include: {
       messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
-      keyResources: { orderBy: { createdAt: "asc" } },
     },
   });
   if (!session) return null;
@@ -101,13 +91,6 @@ export async function getSession(
     id: session.id,
     title: session.title,
     messages: session.messages.map(dbMsgToChat),
-    keyResources: session.keyResources.map((kr) => ({
-      id: kr.id,
-      mediaType: kr.mediaType,
-      url: kr.url,
-      data: kr.data,
-      title: kr.title,
-    })),
   };
 }
 
@@ -147,6 +130,7 @@ export async function pushMessages(
     images: m.images?.length ? m.images : [],
     toolCalls: m.tool_calls ? (m.tool_calls as unknown as Prisma.InputJsonValue) : undefined,
     toolCallId: m.tool_call_id ?? null,
+    hidden: m.hidden ?? false,
   }));
 
   await prisma.chatMessage.createMany({ data });
@@ -200,6 +184,7 @@ interface DbMessageRow {
   images: string[];
   toolCalls: Prisma.JsonValue;
   toolCallId: string | null;
+  hidden: boolean;
 }
 
 function dbMsgToChat(row: DbMessageRow): ChatMessage {
@@ -215,6 +200,9 @@ function dbMsgToChat(row: DbMessageRow): ChatMessage {
   }
   if (row.toolCallId) {
     msg.tool_call_id = row.toolCallId;
+  }
+  if (row.hidden) {
+    msg.hidden = true;
   }
   return msg;
 }

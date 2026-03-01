@@ -30,10 +30,16 @@ const DDL = `CREATE TABLE IF NOT EXISTS "$TABLE" (
   title TEXT,
   url TEXT,
   data JSONB,
-  image_gen_id TEXT,
+  key_resource_id TEXT,
   sort_order INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 )`;
+
+/** Migrate old image_gen_id column to key_resource_id. */
+const MIGRATION = [
+  `ALTER TABLE "$TABLE" ADD COLUMN IF NOT EXISTS key_resource_id TEXT`,
+  `UPDATE "$TABLE" SET key_resource_id = image_gen_id WHERE key_resource_id IS NULL AND image_gen_id IS NOT NULL`,
+];
 
 const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_$SHORT_scope ON "$TABLE" (scope_type, scope_id)`,
@@ -67,6 +73,13 @@ export async function ensureDomainResourcesTable(): Promise<void> {
     console.log(
       `[domain-resources] Created table "${LOGICAL_NAME}" → "${physicalName}"`,
     );
+  }
+
+  // Run migration for existing tables (adds key_resource_id if missing)
+  for (const stmt of MIGRATION) {
+    try {
+      await bizPool.query(stmt.replaceAll("$TABLE", physicalName));
+    } catch { /* column may not exist in old tables, ignore */ }
   }
 
   // Create indexes

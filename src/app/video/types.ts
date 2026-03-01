@@ -22,7 +22,7 @@ export interface DomainResource {
   title: string | null;
   url: string | null;
   data: unknown;
-  imageGenId: string | null;
+  keyResourceId: string | null;
   sortOrder: number;
 }
 
@@ -33,6 +33,12 @@ export interface CategoryGroup {
 
 export interface DomainResources {
   categories: CategoryGroup[];
+}
+
+export interface VideoResourceData {
+  key?: string;
+  prompt?: string;
+  sourceImageUrl?: string | null;
 }
 
 export interface VideoContext {

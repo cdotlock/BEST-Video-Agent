@@ -17,131 +17,34 @@ requires_mcps:
 ---
 # 多模态生成服务（video-mgr）
 
-## 概述
-
-系统内置两个多模态生成 tool，通过 FC（阿里云函数计算）后端实现：
-
-- \`video_mgr__generate_image\` — 文生图
-- \`video_mgr__generate_video\` — 图生视频
-
-两者共用同一组 FC 环境变量，无需额外端口或外部服务。返回的 URL 均为永久 OSS 地址，可直接使用。
-
-## 工具详情
+## 工具语义（参数结构见 tool schema）
 
 ### generate_image — 文生图（带生命周期管理）
 
-从文本 prompt 生成图片，返回永久 OSS URL。每次调用都会记录 prompt、URL 和版本历史，支持用户脱离 LLM 独立重新生成、回滚和修改 prompt。
+每次调用记录 prompt、URL 和版本历史。同一 key 再次调用会创建新版本而非新图片。生成成功后系统自动写入 domain_resources，无需手动 INSERT。
 
-**参数**：
-- \`key\`（必填）— 图片的语义唯一标识，session 内唯一。使用同一个 key 再次调用会创建新版本而非新图片。
-- \`prompt\`（必填）— 描述要生成的图片内容
-- \`referenceImageUrls\`（可选）— 参考图 URL 数组，用于风格或内容引导
-- \`category\`（必填）— 资源分类名，决定 UI 右侧资源面板的分组标题。由你自由命名，如 \`角色立绘\`、\`场景\`、\`服装\`、\`分镜\` 等
-- \`scopeType\`（必填）— \`"novel"\` 或 \`"script"\`。角色立绘等全局资源用 novel，分镜/服装等集级资源用 script
-- \`scopeId\`（必填）— 对应 scope 的数据库 ID（novel_id 或 script_db_id，参见上下文）
-- \`title\`（可选）— 资源面板中显示的标签（如角色名、场景标题）
+- \`key\` — 语义唯一标识。命名规范：\`char_{name}_portrait\`、\`scene_{n}_bg\`、\`shot_{scene}_{shot}\`、\`costume_{name}_{ep}\`，其他用描述性英文下划线连接
+- \`category\` — 自由命名（如 \`角色立绘\`、\`场景\`、\`分镜\`），决定 UI 资源面板分组
+- \`scopeType\` — 角色立绘等全局资源用 \`"novel"\`，分镜/服装等集级资源用 \`"script"\`
+- \`scopeId\` — 从上下文取对应的 novel_id 或 script_db_id
 
-**key 命名规范**：
-- 角色立绘：\`char_{name}_portrait\`（如 \`char_alice_portrait\`）
-- 场景空镜：\`scene_{n}_bg\`（如 \`scene_1_bg\`）
-- 分镜图：\`shot_{scene}_{shot}\`（如 \`shot_1_3\`）
-- 换装立绘：\`costume_{name}_{ep}\`（如 \`costume_alice_ep1\`）
-- 其他：使用描述性英文，用下划线连接
-
-**重要**：生成前检查上下文中的 Image Registry 段，如果目标 key 已存在且图片满足需求，无需重复生成。
+**重要**：生成前检查 Image Registry，key 已存在且满足需求则无需重复生成。
 
 **示例**：
 
 \\\`\\\`\\\`json
-{
-  "items": [{
-    "key": "char_alice_portrait",
-    "prompt": "一个穿着蓝色连衣裙的少女站在樱花树下，动漫风格，高清",
-    "referenceImageUrls": ["https://example.com/style-ref.jpg"],
-    "category": "角色立绘",
-    "scopeType": "novel",
-    "scopeId": "novel-uuid-here",
-    "title": "Alice"
-  }]
-}
+{ "items": [{ "key": "char_alice_portrait", "prompt": "一个穿着蓝色连衣裙的少女站在樱花树下，动漫风格，高清", "category": "角色立绘", "scopeType": "novel", "scopeId": "novel-uuid-here", "title": "Alice" }] }
 \\\`\\\`\\\`
 
-**返回**：
-\\\`\\\`\\\`json
-[{ "index": 0, "status": "ok", "key": "char_alice_portrait", "imageGenId": "cmXXX", "imageUrl": "https://oss.../generated.png", "version": 1 }]
-\\\`\\\`\\\`
+### generate_video — 存储视频 prompt（当前不实际生成）
 
-**注意**：生成成功后，系统自动将图片写入 domain_resources 表（含 image_gen_id），无需手动 INSERT。category 决定 UI 资源面板的分组展示。
-
-### generate_video — 图生视频
-
-将一张静态图片 + 运动描述 prompt 生成短视频，返回永久 OSS URL。
-
-**参数**：
-- \`imageUrl\`（必填）— 源图片 URL（通常是 generate_image 的输出）
-- \`prompt\`（必填）— 描述期望的动画/运动效果
-
-**示例**：
-
-\\\`\\\`\\\`json
-{
-  "imageUrl": "https://oss-cn-shanghai.aliyuncs.com/xxx/generated.png",
-  "prompt": "樱花花瓣缓缓飘落，少女的头发在微风中轻轻飘动"
-}
-\\\`\\\`\\\`
-
-**返回**：
-\\\`\\\`\\\`json
-{ "videoUrl": "https://oss-cn-shanghai.aliyuncs.com/xxx/generated.mp4" }
-\\\`\\\`\\\`
-
-## 典型工作流
-
-### 文生图 → 图生视频
-
-1. 调用 \`video_mgr__generate_image\` 生成图片
-2. 调用 \`video_mgr__generate_video\`，传入上一步返回的 \`imageUrl\` + 运动 prompt
-
-### 批量生成
-
-需要生成多张图片时，在同一次 generate_image 调用的 items 数组中传入多个条目。每个条目都需要独立的 key。
+仅持久化运动 prompt 到 domain_resources，用户可在 UI 中未来手动触发生成。\`sourceImageUrl\` 通常传 generate_image 的输出。scopeType/scopeId 规则同上。
 
 ### Image Registry
 
-系统会自动在上下文中注入 \`## Image Registry\` 段，列出当前 session 所有已生成的图片及其最新状态（key、prompt、url、版本号）。
+上下文自动注入 \`## Image Registry\`，列出当前 session 所有图片的最新状态。
 
-- 生成前先检查 Image Registry，避免对已有且满意的图片重复生成
-- 用户可能通过 UI 直接修改 prompt、重新生成或回滚图片版本，这些操作会以 \`[系统通知]\` 形式出现在对话中
+- 用户可能通过 UI 修改 prompt、重新生成或回滚版本，这些操作会以 \`[系统通知]\` 形式出现在对话中
 - 看到 \`[系统通知]\` 时，以 Image Registry 中的最新状态为准
 
-## Prompt 编写建议
-
-### 图片 Prompt
-
-- 明确描述主体、场景、风格、画质
-- 中英文均可，推荐使用中文描述场景 + 英文描述风格关键词
-- 善用参考图（referenceImageUrls）统一画风
-
-### 视频 Prompt
-
-- 描述运动而非静态画面（"花瓣飘落"而非"有花瓣"）
-- 动作幅度不宜过大，适合微动效果（头发飘动、光影变化、水面波纹）
-- 视频时长固定，无法指定
-
-## 环境配置
-
-需要在 \`.env\` 中配置以下变量（与 video-mgr 项目共用）：
-
-- \`FC_GENERATE_IMAGE_URL\` — FC 图像生成函数 URL
-- \`FC_GENERATE_IMAGE_TOKEN\` — FC 图像生成函数 Token
-- \`FC_GENERATE_VIDEO_URL\` — FC 视频生成函数 URL
-- \`FC_GENERATE_VIDEO_TOKEN\` — FC 视频生成函数 Token
-
-未配置时调用会返回明确错误提示，不会崩溃。
-
-## 约束
-
-- 不支持纯文生视频（必须先有图片）
-- 不支持视频编辑或拼接，每次调用生成独立短视频
-- FC 函数有超时限制，超大图片或复杂 prompt 可能失败
 `;

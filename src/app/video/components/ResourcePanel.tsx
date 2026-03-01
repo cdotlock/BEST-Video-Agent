@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { Button, Collapse, Drawer, Empty, Input, Spin, Typography, Image, Tag, App } from "antd";
 import { EditOutlined } from "@ant-design/icons";
-import type { DomainResources, DomainResource } from "../types";
+import type { DomainResources, DomainResource, VideoResourceData } from "../types";
 import { fetchJson } from "@/app/components/client-utils";
 import { ImageDetailDrawer } from "./ImageDetailDrawer";
 
@@ -37,8 +37,8 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
   const [selectedImageGenId, setSelectedImageGenId] = useState<string | null>(null);
 
   /* ---- Smart image rendering ---- */
-  const renderSmartImage = (url: string, alt: string, imageGenId?: string | null) => {
-    if (imageGenId) {
+  const renderSmartImage = (url: string, alt: string, keyResourceId?: string | null) => {
+    if (keyResourceId) {
       return (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -46,7 +46,7 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
           alt={alt}
           className="w-full cursor-pointer"
           style={{ display: "block" }}
-          onClick={() => setSelectedImageGenId(imageGenId)}
+          onClick={() => setSelectedImageGenId(keyResourceId)}
         />
       );
     }
@@ -99,7 +99,7 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
   const renderImageItem = (r: DomainResource) => (
     <div key={r.id} className="relative overflow-hidden rounded-lg">
       {r.url ? (
-        renderSmartImage(r.url, r.title ?? "Image", r.imageGenId)
+        renderSmartImage(r.url, r.title ?? "Image", r.keyResourceId)
       ) : (
         <div className="flex aspect-square items-center justify-center bg-slate-800">
           <span className="text-xs text-slate-600">No image</span>
@@ -113,20 +113,47 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     </div>
   );
 
-  const renderVideoItem = (r: DomainResource) => (
-    <div key={r.id} className="overflow-hidden rounded-lg">
-      {r.url ? (
-        <video src={r.url} controls muted className="aspect-[9/16] w-full object-cover" />
-      ) : (
-        <div className="flex aspect-[9/16] items-center justify-center bg-slate-800">
-          <span className="text-xs text-slate-600">No video</span>
-        </div>
-      )}
-      {r.title && (
-        <div className="px-2 py-1 text-center text-[11px] text-slate-400">{r.title}</div>
-      )}
-    </div>
-  );
+  const renderVideoItem = (r: DomainResource) => {
+    const vData = r.data as VideoResourceData | null;
+    return (
+      <div key={r.id} className="overflow-hidden rounded-lg">
+        {r.url ? (
+          <video src={r.url} controls muted className="aspect-[9/16] w-full object-cover" />
+        ) : vData?.sourceImageUrl ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={vData.sourceImageUrl}
+              alt={r.title ?? "Source"}
+              className="aspect-[9/16] w-full object-cover opacity-50"
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 px-2">
+              <span className="mb-1 text-[10px] font-medium text-amber-400">待生成</span>
+              {vData.prompt && (
+                <p className="line-clamp-3 text-center text-[10px] leading-relaxed text-white/80">
+                  {vData.prompt}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex aspect-[9/16] flex-col items-center justify-center bg-slate-800 px-2">
+            <span className="mb-1 text-[10px] font-medium text-amber-400">待生成</span>
+            {vData?.prompt ? (
+              <p className="line-clamp-4 text-center text-[10px] leading-relaxed text-slate-500">
+                {vData.prompt}
+              </p>
+            ) : (
+              <span className="text-xs text-slate-600">No prompt</span>
+            )}
+          </div>
+        )}
+        {r.title && (
+          <div className="px-2 py-1 text-center text-[11px] text-slate-400">{r.title}</div>
+        )}
+      </div>
+    );
+  };
 
   const renderJsonItem = (r: DomainResource) => {
     const text = r.data != null

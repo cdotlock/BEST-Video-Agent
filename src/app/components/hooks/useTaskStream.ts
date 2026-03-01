@@ -190,12 +190,22 @@ export function useTaskStream(
           if (isRecord(data)) {
             const kr: KeyResourceItem = {
               id: typeof data.id === "string" ? data.id : crypto.randomUUID(),
+              key: typeof data.key === "string" ? data.key : "",
               mediaType: typeof data.mediaType === "string" ? data.mediaType : "json",
+              currentVersion: typeof data.version === "number" ? data.version : 1,
               url: typeof data.url === "string" ? data.url : null,
               data: data.data,
               title: typeof data.title === "string" ? data.title : null,
             };
-            setKeyResources((prev) => [...prev, kr]);
+            setKeyResources((prev) => {
+              const idx = prev.findIndex((r) => r.id === kr.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = kr;
+                return next;
+              }
+              return [...prev, kr];
+            });
           }
         } catch { /* ignore */ }
       });

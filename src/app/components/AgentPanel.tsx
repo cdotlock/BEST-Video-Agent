@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Typography } from "antd";
-import { AppstoreOutlined, PaperClipOutlined } from "@ant-design/icons";
+import { AppstoreOutlined } from "@ant-design/icons";
 import type { AgentStatus } from "./StatusBadge";
 import { useChat } from "./hooks/useChat";
 import { useModels } from "./hooks/useModels";
@@ -11,7 +11,6 @@ import { useFileUpload } from "./hooks/useFileUpload";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { UploadDialog } from "./UploadDialog";
-import { KeyResourcesPanel } from "./KeyResourcesPanel";
 import { ImageLightbox } from "./ImageLightbox";
 
 /* ------------------------------------------------------------------ */
@@ -65,7 +64,6 @@ export function AgentPanel({
     chat.reloadSession,
   );
 
-  const [showKeyResources, setShowKeyResources] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const displayTitle =
@@ -84,18 +82,6 @@ export function AgentPanel({
           </Typography.Text>
         </div>
         <div className="flex items-center gap-1.5">
-          {chat.keyResources.length > 0 && (
-            <Button
-              size="small"
-              type={showKeyResources ? "primary" : "default"}
-              ghost={showKeyResources}
-              icon={<PaperClipOutlined />}
-              onClick={() => setShowKeyResources((v) => !v)}
-              title="切换关键资源面板"
-            >
-              {chat.keyResources.length}
-            </Button>
-          )}
           <Button
             size="small"
             type={showResources ? "primary" : "default"}
@@ -148,13 +134,6 @@ export function AgentPanel({
           />
         </div>
 
-        {/* Key Resources panel */}
-        {chat.keyResources.length > 0 && showKeyResources && (
-          <KeyResourcesPanel
-            keyResources={chat.keyResources}
-            onImageClick={setLightboxUrl}
-          />
-        )}
       </div>
 
       {/* Upload dialog */}

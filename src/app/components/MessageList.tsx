@@ -60,18 +60,18 @@ export function MessageList({
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
       {error && (
-        <Alert type="error" message={error} showIcon closable style={{ marginBottom: 12 }} />
+        <Alert type="error" title={error} showIcon closable style={{ marginBottom: 12 }} />
       )}
       {isLoadingSession ? (
         <div className="flex items-center justify-center py-8">
           <Spin description="Loading…" />
         </div>
-      ) : messages.filter((m) => m.role !== "tool").length === 0 ? (
+      ) : messages.filter((m) => m.role !== "tool" && !m.hidden).length === 0 ? (
         <Empty description="Send a message to start." style={{ margin: "32px 0" }} />
       ) : (
         <div className="space-y-3">
           {messages
-            .filter((m) => m.role !== "tool")
+            .filter((m) => m.role !== "tool" && !m.hidden)
             .map((msg, idx) => (
               <MessageBubble key={`${msg.role}-${idx}`} message={msg} />
             ))}

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { runAgentStream } from "@/lib/agent/agent";
 import type { StreamCallbacks, KeyResourceEvent, AgentConfig } from "@/lib/agent/agent";
 import type { ToolCall } from "@/lib/agent/types";
-import { addKeyResource } from "@/lib/services/key-resource-service";
+import { upsertResource } from "@/lib/services/key-resource-service";
 import { requestContext } from "@/lib/request-context";
 import type { Prisma } from "@/generated/prisma";
 
@@ -193,17 +193,34 @@ async function executeTask(
         void pushEvent(taskId, "upload_request", req as Prisma.InputJsonValue);
       },
       onKeyResource: (resource: KeyResourceEvent) => {
-        // Persist all resource types (image/video/json) to DB, then emit SSE
-        void addKeyResource(sessionId, {
-          mediaType: resource.mediaType,
+        if (resource.persisted) {
+          // Already written by the MCP tool — just push SSE notification
+          void pushEvent(taskId, "key_resource", {
+            id: resource.persisted.id,
+            key: resource.key,
+            mediaType: resource.mediaType,
+            version: resource.persisted.version,
+            url: resource.url ?? null,
+            data: resource.data ?? null,
+            title: resource.title ?? null,
+          } as unknown as Prisma.InputJsonValue);
+          return;
+        }
+        // Not yet persisted (e.g. subagent JSON) — write + notify
+        void upsertResource(sessionId, resource.key, resource.mediaType, {
+          title: resource.title,
           url: resource.url,
           data: resource.data as Prisma.InputJsonValue | undefined,
-          title: resource.title,
         })
           .then((row) => {
             void pushEvent(taskId, "key_resource", {
-              ...resource,
               id: row.id,
+              key: resource.key,
+              mediaType: resource.mediaType,
+              version: row.version,
+              url: resource.url ?? null,
+              data: resource.data ?? null,
+              title: resource.title ?? null,
             } as unknown as Prisma.InputJsonValue);
           })
           .catch(() => {

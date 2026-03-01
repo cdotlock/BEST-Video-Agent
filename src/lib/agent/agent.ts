@@ -25,72 +25,87 @@ import {
   compressMessages,
 } from "./eviction";
 import { requestContext } from "@/lib/request-context";
-import crypto from "node:crypto";
+import { listBySession as listKeyResources } from "@/lib/services/key-resource-service";
 
 /* ------------------------------------------------------------------ */
-/*  Auto-detect media resources from tool results                      */
+/*  Key resource extraction from specific tools                        */
 /* ------------------------------------------------------------------ */
 
 export interface KeyResourceEvent {
-  id: string;
+  /** Semantic key — session-unique identifier for upsert. */
+  key: string;
   mediaType: "image" | "video" | "json";
   url?: string;
   data?: unknown;
   title?: string;
+  /**
+   * When set, the resource was already persisted by the MCP tool.
+   * task-service should only push the SSE event, not call upsertResource.
+   */
+  persisted?: { id: string; version: number };
 }
 
-const IMAGE_RE = /https?:\/\/\S+\.(?:png|jpe?g|gif|webp|svg)(?:[?#]\S*)?/gi;
-const VIDEO_RE = /https?:\/\/\S+\.(?:mp4|webm|mov)(?:[?#]\S*)?/gi;
-
-/** Minimum content length to consider for JSON key-resource detection. */
-const MIN_JSON_KR_SIZE = 200;
+/**
+ * Known tools that produce key resources.
+ * Only these tools' results are inspected — all others are ignored.
+ */
+const KEY_RESOURCE_TOOLS = new Set([
+  "subagent__run_text",
+  "video_mgr__generate_image",
+  "video_mgr__generate_video",
+]);
 
 /**
- * Scan tool result text for media URLs and structured JSON data.
- * System-driven — no tool participation required.
- * Every tool result is scanned automatically.
+ * Extract key resource events from a specific tool's result.
+ * Only the 3 known resource-producing tools are handled.
  */
-export function detectMediaResources(toolName: string, content: string): KeyResourceEvent[] {
+export function extractKeyResources(toolName: string, content: string): KeyResourceEvent[] {
+  if (!KEY_RESOURCE_TOOLS.has(toolName)) return [];
+
   const out: KeyResourceEvent[] = [];
-  const seen = new Set<string>();
-  for (const m of content.matchAll(IMAGE_RE)) {
-    const url = m[0];
-    if (seen.has(url)) continue;
-    seen.add(url);
-    out.push({ id: crypto.randomUUID(), mediaType: "image", url, title: toolName });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return out;
   }
-  for (const m of content.matchAll(VIDEO_RE)) {
-    const url = m[0];
-    if (seen.has(url)) continue;
-    seen.add(url);
-    out.push({ id: crypto.randomUUID(), mediaType: "video", url, title: toolName });
-  }
+  if (!Array.isArray(parsed)) return out;
 
-  // JSON detection: query results with non-empty rows, or non-trivial arrays
-  if (content.length >= MIN_JSON_KR_SIZE) {
-    try {
-      const parsed: unknown = JSON.parse(content);
-      // Pattern 1: { rows: [...], rowCount: N } — biz_db query result
-      if (isRecord(parsed) && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
-        out.push({
-          id: crypto.randomUUID(),
-          mediaType: "json",
-          data: parsed.rows,
-          title: toolName,
-        });
-      }
-      // Pattern 2: top-level array of objects (e.g. structured tool output)
-      else if (Array.isArray(parsed) && parsed.length > 0 && isRecord(parsed[0])) {
-        out.push({
-          id: crypto.randomUUID(),
-          mediaType: "json",
-          data: parsed,
-          title: toolName,
-        });
-      }
-    } catch { /* not JSON, skip */ }
-  }
+  for (const item of parsed) {
+    if (!isRecord(item) || item.status !== "ok") continue;
 
+    if (toolName === "subagent__run_text") {
+      // Subagent: { status, result, keyJsonTitle? }
+      if (typeof item.keyJsonTitle !== "string" || typeof item.result !== "string") continue;
+      let data: unknown;
+      try { data = JSON.parse(item.result as string); } catch { data = item.result; }
+      out.push({
+        key: item.keyJsonTitle as string,
+        mediaType: "json",
+        data,
+        title: item.keyJsonTitle as string,
+      });
+    } else if (toolName === "video_mgr__generate_image") {
+      // generate_image: { status, key, keyResourceId, imageUrl, version }
+      if (typeof item.key !== "string" || typeof item.keyResourceId !== "string") continue;
+      out.push({
+        key: item.key as string,
+        mediaType: "image",
+        url: typeof item.imageUrl === "string" ? item.imageUrl as string : undefined,
+        title: item.key as string,
+        persisted: { id: item.keyResourceId as string, version: item.version as number },
+      });
+    } else if (toolName === "video_mgr__generate_video") {
+      // generate_video: { status, key, resourceId }
+      if (typeof item.key !== "string") continue;
+      out.push({
+        key: item.key as string,
+        mediaType: "video",
+        title: item.key as string,
+        // video prompts are stored in domain_resources, not yet in KeyResource
+      });
+    }
+  }
   return out;
 }
 
@@ -157,6 +172,27 @@ async function buildEnrichedSystemPrompt(config?: AgentConfig): Promise<string> 
 
   if (skillParts.length === 0) return base;
   return base + "\n\n## Pre-loaded Skills (full content — no need to call skills__get)\n\n" + skillParts.join("\n\n---\n\n");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Key JSON context injection                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Build context string from session's key JSON resources.
+ * Returns null if no JSON key resources exist.
+ */
+async function buildKeyJsonContext(sessionId: string): Promise<string | null> {
+  const resources = await listKeyResources(sessionId);
+  const jsonResources = resources.filter((r) => r.mediaType === "json" && r.data != null);
+  if (jsonResources.length === 0) return null;
+
+  const parts = jsonResources.map((r) => {
+    const label = r.title ?? r.key;
+    const json = typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
+    return `## ${label}\n\`\`\`json\n${json}\n\`\`\``;
+  });
+  return "# Key Data (latest)\n\n" + parts.join("\n\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -361,11 +397,17 @@ async function runAgentInnerCore(
 }
 
   while (true) {
+    // Inject key JSON resources into system prompt
+    const keyJsonCtx = await buildKeyJsonContext(session.id);
+    const fullSystemPrompt = keyJsonCtx
+      ? systemPrompt + "\n\n" + keyJsonCtx
+      : systemPrompt;
+
     // Rebuild compressed LLM context each iteration
     const allRaw = [...session.messages, ...newMessages];
     const compressed = compressMessages(allRaw, tracker);
     const llmMessages: LlmMessage[] = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: fullSystemPrompt },
       ...compressed.map(chatMsgToLlm),
     ];
 
@@ -531,11 +573,17 @@ async function runAgentStreamInnerCore(
       ? dynamicContext + "\n\n---\n\n" + baseSystemPrompt
       : baseSystemPrompt;
 
+    // Inject key JSON resources into system prompt
+    const keyJsonCtx = await buildKeyJsonContext(session.id);
+    const fullSystemPrompt = keyJsonCtx
+      ? systemPrompt + "\n\n" + keyJsonCtx
+      : systemPrompt;
+
     // Rebuild compressed LLM context each iteration
     const allRaw = [...session.messages, ...newMessages];
     const compressed = compressMessages(allRaw, tracker);
     const llmMessages: LlmMessage[] = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: fullSystemPrompt },
       ...compressed.map(chatMsgToLlm),
     ];
 
@@ -626,8 +674,8 @@ async function runAgentStreamInnerCore(
           // Register with eviction tracker
           tracker.register(tc.id, tc.function.name, tc.function.arguments, content);
 
-          // Auto-detect media resources from tool output
-          for (const kr of detectMediaResources(tc.function.name, content)) {
+          // Extract key resources from known resource-producing tools
+          for (const kr of extractKeyResources(tc.function.name, content)) {
             callbacks.onKeyResource?.(kr);
           }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Badge, Button, Card, Drawer, Image, Typography, Input, message } from "antd";
+import { Badge, Button, Card, Drawer, Image, Tag, Typography, Input, message } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import type { KeyResourceItem } from "../types";
 import { JsonViewer } from "./JsonViewer";
@@ -83,11 +83,18 @@ export function KeyResourcesPanel({
           {keyResources.map((kr) => (
             <Card key={kr.id} size="small" styles={{ body: { padding: 8 } }}>
               <div className="flex items-start justify-between gap-1">
-                {kr.title && (
-                  <Typography.Text style={{ fontSize: 11, fontWeight: 500, flex: 1, marginBottom: 6 }}>
-                    {kr.title}
-                  </Typography.Text>
-                )}
+                <div className="flex flex-1 items-center gap-1" style={{ marginBottom: 6 }}>
+                  {kr.title && (
+                    <Typography.Text style={{ fontSize: 11, fontWeight: 500, flex: 1 }}>
+                      {kr.title}
+                    </Typography.Text>
+                  )}
+                  {kr.currentVersion > 1 && (
+                    <Tag color="blue" style={{ fontSize: 9, lineHeight: "14px", margin: 0, padding: "0 4px" }}>
+                      v{kr.currentVersion}
+                    </Tag>
+                  )}
+                </div>
                 {kr.mediaType === "json" && (
                   <div className="flex shrink-0 gap-0.5">
                     {onUpdateJson && (

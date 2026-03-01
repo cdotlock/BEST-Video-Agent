@@ -9,7 +9,7 @@ import type { ContextProvider } from "@/lib/agent/context-provider";
 import { bizPool } from "@/lib/biz-db";
 import { resolveTable, GLOBAL_USER } from "@/lib/biz-db-namespace";
 import { getCurrentSessionId } from "@/lib/request-context";
-import { buildImageRegistryContext } from "@/lib/services/image-registry-context";
+import { buildResourceRegistryContext } from "@/lib/services/key-resource-context";
 import { getResourcesByScope } from "@/lib/domain/resource-service";
 import type { CategoryGroup, DomainResource } from "@/lib/domain/resource-service";
 
@@ -35,14 +35,13 @@ async function physical(logicalName: string): Promise<string | null> {
 interface ScriptRow {
   id: string;
   script_content: string | null;
-  storyboard_raw: string | null;
 }
 
 async function queryScript(
   table: string, novelId: string, scriptKey: string,
 ): Promise<ScriptRow | null> {
   const { rows } = await bizPool.query(
-    `SELECT id, script_content, storyboard_raw
+    `SELECT id, script_content
      FROM "${table}"
      WHERE novel_id = $1 AND script_key = $2
      LIMIT 1`,
@@ -61,7 +60,7 @@ function summarizeResource(r: DomainResource): string {
   if (r.url) parts.push(`url=${r.url}`);
   if (r.mediaType === "json" && r.data) {
     const json = typeof r.data === "string" ? r.data : JSON.stringify(r.data);
-    parts.push(json.length > 120 ? `data=${json.slice(0, 120)}...` : `data=${json}`);
+    parts.push(`data=${json}`);
   }
   return parts.join(" | ");
 }
@@ -74,29 +73,7 @@ function buildContext(
 ): string {
   const L: string[] = [];
   const push = (s: string) => L.push(s);
-
-  /* ── 0. Pinned JSON Data (editable by user) ── */
   const allCategories = [...novelCategories, ...scriptCategories];
-  const jsonResources = allCategories.flatMap((g) =>
-    g.items.filter((r) => r.mediaType === "json"),
-  );
-  if (jsonResources.length > 0 || script?.storyboard_raw) {
-    push("# Pinned Data (editable by user \u2014 always up-to-date)");
-    push("");
-    // Storyboard from novel_scripts
-    if (script?.storyboard_raw) {
-      push(`## Storyboard\n\`\`\`json\n${script.storyboard_raw}\n\`\`\``);
-    }
-    // JSON resources from domain_resources
-    for (const r of jsonResources) {
-      const title = r.title ?? "Data";
-      const json = typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
-      push(`## ${title}\n\`\`\`json\n${json}\n\`\`\``);
-    }
-    push("");
-    push("---");
-    push("");
-  }
 
   /* ── 1. Identifiers ── */
   push("# Video Workflow Context");
@@ -109,13 +86,7 @@ function buildContext(
   if (script?.script_content) {
     push("");
     push("## Script Content");
-    const content = script.script_content;
-    if (content.length > 12000) {
-      push(content.slice(0, 12000));
-      push(`\n... (truncated, ${content.length} chars total)`);
-    } else {
-      push(content);
-    }
+    push(script.script_content);
   }
 
   /* ── 3. Progress (per category) ── */
@@ -171,12 +142,12 @@ export class VideoContextProvider implements ContextProvider {
 
     let ctx = buildContext(this.config, script, novelCategories, scriptCategories);
 
-    // Append Image Registry if any tracked images exist in this session
+    // Append Resource Registry if any tracked resources exist in this session
     const sessionId = getCurrentSessionId();
     if (sessionId) {
-      const imageRegistry = await buildImageRegistryContext(sessionId);
-      if (imageRegistry) {
-        ctx += "\n\n" + imageRegistry;
+      const resourceRegistry = await buildResourceRegistryContext(sessionId);
+      if (resourceRegistry) {
+        ctx += "\n\n" + resourceRegistry;
       }
     }
 

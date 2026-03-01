@@ -20,7 +20,7 @@ export interface DomainResource {
   title: string | null;
   url: string | null;
   data: unknown;
-  imageGenId: string | null;
+  keyResourceId: string | null;
   sortOrder: number;
 }
 
@@ -52,7 +52,7 @@ function toResource(row: Record<string, unknown>): DomainResource {
     title: (row.title as string | null) ?? null,
     url: (row.url as string | null) ?? null,
     data: row.data ?? null,
-    imageGenId: (row.image_gen_id as string | null) ?? null,
+    keyResourceId: (row.key_resource_id as string | null) ?? (row.image_gen_id as string | null) ?? null,
     sortOrder: (row.sort_order as number) ?? 0,
   };
 }
@@ -121,7 +121,7 @@ export interface CreateResourceInput {
   title?: string;
   url?: string;
   data?: unknown;
-  imageGenId?: string;
+  keyResourceId?: string;
   sortOrder?: number;
 }
 
@@ -133,7 +133,7 @@ export async function createResource(input: CreateResourceInput): Promise<string
   const t = await physical();
   const { rows } = await bizPool.query(
     `INSERT INTO "${t}"
-       (scope_type, scope_id, category, media_type, title, url, data, image_gen_id, sort_order)
+       (scope_type, scope_id, category, media_type, title, url, data, key_resource_id, sort_order)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
@@ -144,7 +144,7 @@ export async function createResource(input: CreateResourceInput): Promise<string
       input.title ?? null,
       input.url ?? null,
       input.data != null ? JSON.stringify(input.data) : null,
-      input.imageGenId ?? null,
+      input.keyResourceId ?? null,
       input.sortOrder ?? 0,
     ],
   );

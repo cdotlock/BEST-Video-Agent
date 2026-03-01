@@ -91,11 +91,14 @@ export type ChatMessage = {
   images?: string[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  hidden?: boolean;
 };
 
 export type KeyResourceItem = {
   id: string;
+  key: string;
   mediaType: string;
+  currentVersion: number;
   url?: string | null;
   data?: unknown;
   title?: string | null;

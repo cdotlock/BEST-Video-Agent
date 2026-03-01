@@ -49,8 +49,8 @@ export function ResourceDetailDrawer({ detail }: ResourceDetailDrawerProps) {
         ) : null
       }
     >
-      {detail.error && <Alert type="error" message={detail.error} showIcon closable style={{ marginBottom: 12 }} />}
-      {detail.notice && <Alert type="success" message={detail.notice} showIcon closable style={{ marginBottom: 12 }} />}
+      {detail.error && <Alert type="error" title={detail.error} showIcon closable style={{ marginBottom: 12 }} />}
+      {detail.notice && <Alert type="success" title={detail.notice} showIcon closable style={{ marginBottom: 12 }} />}
 
       {detail.isLoadingResourceDetail ? (
         <div className="flex items-center justify-center py-12">

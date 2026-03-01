@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { regenerate, getById } from "@/lib/services/image-generation-service";
+import { regenerate, getById } from "@/lib/services/key-resource-service";
 import { pushMessages } from "@/lib/services/chat-session-service";
 
 type Params = { params: Promise<{ id: string }> };
@@ -9,7 +9,7 @@ const BodySchema = z.object({
   prompt: z.string().min(1).optional(),
 });
 
-/** POST /api/image-generations/:id/regenerate */
+/** POST /api/key-resources/:id/regenerate */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
@@ -26,7 +26,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
-    // Need sessionId for append log — fetch before regeneration
     const before = await getById(id);
     if (!before) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -34,13 +33,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const result = await regenerate(id, parsed.data.prompt);
 
-    // Append log to session so LLM knows about the out-of-band operation
     const actionDesc = parsed.data.prompt
       ? `使用新 prompt 重新生成`
       : `使用原 prompt 重新生成`;
     await pushMessages(before.sessionId, [{
       role: "user",
-      content: `[系统通知] 用户手动操作了图片 "${result.key}"：${actionDesc}。当前状态：prompt="${result.prompt}" url=${result.imageUrl} version=${result.version}`,
+      content: `[系统通知] 用户手动操作了资源 "${result.key}"：${actionDesc}。当前状态：prompt="${result.prompt}" url=${result.imageUrl} version=${result.version}`,
+      hidden: true,
     }]);
 
     return NextResponse.json(result);
