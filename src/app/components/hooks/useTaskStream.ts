@@ -103,6 +103,7 @@ export function useTaskStream(
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | undefined>(initialSessionId);
   const activeSendRef = useRef(false);
+  const timeoutCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -126,6 +127,10 @@ export function useTaskStream(
   const connectToTask = useCallback(
     (taskId: string, opts?: { isReconnect?: boolean }) => {
       eventSourceRef.current?.close();
+      if (timeoutCheckIntervalRef.current) {
+        clearInterval(timeoutCheckIntervalRef.current);
+        timeoutCheckIntervalRef.current = null;
+      }
 
       const isReconnect = opts?.isReconnect ?? false;
       if (!isReconnect) {
@@ -141,9 +146,39 @@ export function useTaskStream(
       const es = new EventSource(`/api/tasks/${taskId}/events`);
       eventSourceRef.current = es;
 
+      // 连接超时检测：如果 90 秒内没有收到任何消息（包括心跳），则认为连接已死
+      let lastMessageTime = Date.now();
+      timeoutCheckIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - lastMessageTime;
+        if (elapsed > 90000 && es.readyState === EventSource.OPEN) {
+          console.error(`[task:${taskId}] No message received for ${elapsed}ms, considering connection dead`);
+          if (timeoutCheckIntervalRef.current) {
+            clearInterval(timeoutCheckIntervalRef.current);
+            timeoutCheckIntervalRef.current = null;
+          }
+          es.close();
+          eventSourceRef.current = null;
+          taskIdRef.current = null;
+          setIsStreaming(false);
+          setIsSending(false);
+          activeSendRef.current = false;
+          setStreamingReply(null);
+          setStreamingTools([]);
+          setError("连接超时，请刷新页面重试");
+          setStatus("error");
+          cbRef.current.onStreamEnd?.();
+        }
+      }, 15000); // 每 15 秒检查一次
+
+      // 更新最后消息时间的辅助函数
+      const touchLastMessageTime = () => {
+        lastMessageTime = Date.now();
+      };
+
       /* ---- Core events ---- */
 
       es.addEventListener("session", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           if (isRecord(data) && typeof data.session_id === "string") {
@@ -155,6 +190,7 @@ export function useTaskStream(
       });
 
       es.addEventListener("delta", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           if (isRecord(data) && typeof data.text === "string") {
@@ -164,6 +200,7 @@ export function useTaskStream(
       });
 
       es.addEventListener("tool", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           if (isRecord(data) && typeof data.summary === "string") {
@@ -175,6 +212,7 @@ export function useTaskStream(
       });
 
       es.addEventListener("upload_request", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data = JSON.parse(e.data as string) as UploadRequestPayload;
           if (data.uploadId && data.endpoint) {
@@ -185,6 +223,7 @@ export function useTaskStream(
       });
 
       es.addEventListener("key_resource", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           if (isRecord(data)) {
@@ -213,6 +252,7 @@ export function useTaskStream(
       /* ---- Extension: domain-specific events ---- */
 
       es.addEventListener("tool_start", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           cbRef.current.onExtraEvent?.("tool_start", data);
@@ -220,6 +260,7 @@ export function useTaskStream(
       });
 
       es.addEventListener("tool_end", (e: MessageEvent) => {
+        touchLastMessageTime();
         try {
           const data: unknown = JSON.parse(e.data as string);
           cbRef.current.onExtraEvent?.("tool_end", data);
@@ -229,6 +270,11 @@ export function useTaskStream(
       /* ---- done ---- */
 
       es.addEventListener("done", () => {
+        touchLastMessageTime();
+        if (timeoutCheckIntervalRef.current) {
+          clearInterval(timeoutCheckIntervalRef.current);
+          timeoutCheckIntervalRef.current = null;
+        }
         es.close();
         eventSourceRef.current = null;
         taskIdRef.current = null;
@@ -258,7 +304,15 @@ export function useTaskStream(
       /* ---- error ---- */
 
       es.addEventListener("error", (e: Event) => {
+        console.log(`[task:${taskId}] EventSource error event:`, e);
+        
+        // 处理服务端发送的错误事件 (MessageEvent with data)
         if (e instanceof MessageEvent && e.data) {
+          touchLastMessageTime();
+          if (timeoutCheckIntervalRef.current) {
+            clearInterval(timeoutCheckIntervalRef.current);
+            timeoutCheckIntervalRef.current = null;
+          }
           try {
             const data: unknown = JSON.parse(e.data as string);
             if (isRecord(data) && typeof data.error === "string") {
@@ -275,8 +329,29 @@ export function useTaskStream(
           setStreamingTools([]);
           setStatus("error");
           cbRef.current.onStreamEnd?.();
+          return;
         }
-        // Connection errors: EventSource auto-reconnects via Last-Event-ID.
+        
+        // 处理连接错误 (readyState === 0 or 2)
+        if (es.readyState === EventSource.CLOSED) {
+          console.error(`[task:${taskId}] EventSource connection closed unexpectedly`);
+          if (timeoutCheckIntervalRef.current) {
+            clearInterval(timeoutCheckIntervalRef.current);
+            timeoutCheckIntervalRef.current = null;
+          }
+          es.close();
+          eventSourceRef.current = null;
+          taskIdRef.current = null;
+          setIsStreaming(false);
+          setIsSending(false);
+          activeSendRef.current = false;
+          setStreamingReply(null);
+          setStreamingTools([]);
+          setError("连接中断，请刷新页面重试");
+          setStatus("error");
+          cbRef.current.onStreamEnd?.();
+        }
+        // 其他情况 (readyState === CONNECTING): EventSource 会自动重连 via Last-Event-ID
       });
     },
     [],
@@ -321,6 +396,10 @@ export function useTaskStream(
     if (tid) {
       void fetch(`/api/tasks/${tid}/cancel`, { method: "POST" }).catch(() => {});
     }
+    if (timeoutCheckIntervalRef.current) {
+      clearInterval(timeoutCheckIntervalRef.current);
+      timeoutCheckIntervalRef.current = null;
+    }
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     taskIdRef.current = null;
@@ -350,6 +429,10 @@ export function useTaskStream(
 
   useEffect(() => {
     return () => {
+      if (timeoutCheckIntervalRef.current) {
+        clearInterval(timeoutCheckIntervalRef.current);
+        timeoutCheckIntervalRef.current = null;
+      }
       eventSourceRef.current?.close();
     };
   }, []);

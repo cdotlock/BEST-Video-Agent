@@ -85,13 +85,27 @@ function pushEvent(
   data: Prisma.InputJsonValue,
 ): Promise<TaskEventRow> {
   const prev = pushQueues.get(taskId) ?? Promise.resolve();
-  const next = prev.then(async () => {
-    const row = await prisma.taskEvent.create({
-      data: { taskId, type, data },
+  const next = prev
+    .then(async () => {
+      const row = await prisma.taskEvent.create({
+        data: { taskId, type, data },
+      });
+      emitter.emit(`event:${taskId}`, row);
+      return row;
+    })
+    .catch((err: unknown) => {
+      // 写入失败也要发射事件，避免客户端永久等待
+      console.error(`[task:${taskId}] pushEvent(${type}) DB write failed:`, err);
+      const fallbackRow: TaskEventRow = {
+        id: Date.now(), // 临时 ID，确保递增
+        taskId,
+        type,
+        data: data as Prisma.JsonValue,
+        createdAt: new Date(),
+      };
+      emitter.emit(`event:${taskId}`, fallbackRow);
+      throw err; // 重新抛出，让调用方知道失败了
     });
-    emitter.emit(`event:${taskId}`, row);
-    return row;
-  });
   pushQueues.set(taskId, next);
   return next;
 }
@@ -175,27 +189,27 @@ async function executeTask(
 
     const callbacks: StreamCallbacks = {
       onSession: (id) => {
-        void pushEvent(taskId, "session", { session_id: id });
+        pushEvent(taskId, "session", { session_id: id }).catch(() => {/* logged in pushEvent */});
       },
       onDelta: (text) => {
-        void pushEvent(taskId, "delta", { text });
+        pushEvent(taskId, "delta", { text }).catch(() => {/* logged in pushEvent */});
       },
       onToolCall: (call) => {
-        void pushEvent(taskId, "tool", { summary: summarizeTool(call) });
+        pushEvent(taskId, "tool", { summary: summarizeTool(call) }).catch(() => {/* logged in pushEvent */});
       },
       onToolStart: (event) => {
-        void pushEvent(taskId, "tool_start", event as unknown as Prisma.InputJsonValue);
+        pushEvent(taskId, "tool_start", event as unknown as Prisma.InputJsonValue).catch(() => {/* logged in pushEvent */});
       },
       onToolEnd: (event) => {
-        void pushEvent(taskId, "tool_end", event as unknown as Prisma.InputJsonValue);
+        pushEvent(taskId, "tool_end", event as unknown as Prisma.InputJsonValue).catch(() => {/* logged in pushEvent */});
       },
       onUploadRequest: (req) => {
-        void pushEvent(taskId, "upload_request", req as Prisma.InputJsonValue);
+        pushEvent(taskId, "upload_request", req as Prisma.InputJsonValue).catch(() => {/* logged in pushEvent */});
       },
       onKeyResource: (resource: KeyResourceEvent) => {
         if (resource.persisted) {
           // Already written by the MCP tool — just push SSE notification
-          void pushEvent(taskId, "key_resource", {
+          pushEvent(taskId, "key_resource", {
             id: resource.persisted.id,
             key: resource.key,
             mediaType: resource.mediaType,
@@ -203,17 +217,17 @@ async function executeTask(
             url: resource.url ?? null,
             data: resource.data ?? null,
             title: resource.title ?? null,
-          } as unknown as Prisma.InputJsonValue);
+          } as unknown as Prisma.InputJsonValue).catch(() => {/* logged in pushEvent */});
           return;
         }
         // Not yet persisted (e.g. subagent JSON) — write + notify
-        void upsertResource(sessionId, resource.key, resource.mediaType, {
+        upsertResource(sessionId, resource.key, resource.mediaType, {
           title: resource.title,
           url: resource.url,
           data: resource.data as Prisma.InputJsonValue | undefined,
         })
           .then((row) => {
-            void pushEvent(taskId, "key_resource", {
+            return pushEvent(taskId, "key_resource", {
               id: row.id,
               key: resource.key,
               mediaType: resource.mediaType,
@@ -223,9 +237,12 @@ async function executeTask(
               title: resource.title ?? null,
             } as unknown as Prisma.InputJsonValue);
           })
-          .catch(() => {
-            void pushEvent(taskId, "key_resource", resource as unknown as Prisma.InputJsonValue);
-          });
+          .catch((err) => {
+            console.error(`[task:${taskId}] onKeyResource upsert failed:`, err);
+            // Fallback: 至少发送未持久化的资源信息
+            return pushEvent(taskId, "key_resource", resource as unknown as Prisma.InputJsonValue);
+          })
+          .catch(() => {/* logged in pushEvent */});
       },
     };
 

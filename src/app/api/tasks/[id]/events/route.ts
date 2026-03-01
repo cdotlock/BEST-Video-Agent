@@ -34,18 +34,36 @@ export async function GET(req: NextRequest, { params }: Params) {
       const send = (chunk: string) => {
         try {
           controller.enqueue(encoder.encode(chunk));
-        } catch {
+        } catch (err) {
           // Controller closed (client disconnected)
+          console.log(`[task:${id}] SSE send failed (client disconnected):`, err);
         }
       };
+
+      // 心跳计时器，每 30 秒发送一次
+      const heartbeatInterval = setInterval(() => {
+        if (!ac.signal.aborted) {
+          send(": heartbeat\n\n");
+        }
+      }, 30000);
 
       try {
         for await (const event of subscribeEvents(id, validLastId, ac.signal)) {
           if (ac.signal.aborted) break;
           send(toSse(event.id, event.type, event.data));
         }
-      } catch {
-        // Generator threw or was aborted — close gracefully
+      } catch (err) {
+        // Generator threw or was aborted
+        console.error(`[task:${id}] SSE stream error:`, err);
+        // 尝试发送错误事件给客户端
+        try {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          send(toSse(Date.now(), "error", { error: errorMsg }));
+        } catch {
+          /* best effort */
+        }
+      } finally {
+        clearInterval(heartbeatInterval);
       }
 
       try {
