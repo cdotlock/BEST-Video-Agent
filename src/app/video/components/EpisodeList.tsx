@@ -34,6 +34,7 @@ export interface EpisodeListProps {
   novelName: string;
   episodes: EpisodeSummary[];
   isLoading: boolean;
+  isUploading: boolean;
   selectedEpisode: EpisodeSummary | null;
   onSelectEpisode: (ep: EpisodeSummary) => void;
   onDeleteEpisode: (ep: EpisodeSummary) => void;
@@ -55,6 +56,7 @@ export function EpisodeList({
   novelName,
   episodes,
   isLoading,
+  isUploading,
   selectedEpisode,
   onSelectEpisode,
   onDeleteEpisode,
@@ -98,10 +100,12 @@ export function EpisodeList({
           size="small"
           icon={<UploadOutlined />}
           onClick={() => fileInputRef.current?.click()}
+          loading={isUploading}
+          disabled={isUploading}
           block
           style={{ marginTop: 8 }}
         >
-          Upload EP File
+          {isUploading ? "Initializing…" : "Upload EP File"}
         </Button>
         <input
           ref={fileInputRef}

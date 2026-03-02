@@ -92,6 +92,31 @@ export const mcpManagerMcp: McpProvider = {
         },
       },
       {
+        name: "patch_code",
+        description: "Apply search-and-replace patches to a dynamic MCP server's production code. Creates a new version. Much cheaper than update_code for small changes — prefer this over update_code when modifying existing code.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            name: { type: "string" },
+            patches: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  search: { type: "string", description: "Exact text to find in current code" },
+                  replace: { type: "string", description: "Replacement text" },
+                },
+                required: ["search", "replace"],
+              },
+              description: "Array of search-and-replace patches applied sequentially",
+            },
+            description: { type: "string" },
+            promote: { type: "boolean", description: "Set new version as production + reload (default: true)" },
+          },
+          required: ["name", "patches"],
+        },
+      },
+      {
         name: "toggle",
         description: "Enable or disable a dynamic MCP server.",
         inputSchema: {
@@ -240,6 +265,14 @@ export const mcpManagerMcp: McpProvider = {
         const { record, version, loadError } = await svc.updateMcpServer(params);
         const promoted = params.promote ? " (promoted to production)" : "";
         let msg = `Pushed MCP server "${record.name}" v${version.version}${promoted}`;
+        if (loadError) msg += ` — sandbox load failed: ${loadError}`;
+        return text(msg);
+      }
+      case "patch_code": {
+        const params = svc.McpPatchParams.parse(args);
+        const { record, version, loadError } = await svc.patchMcpServer(params);
+        const promoted = params.promote ? " (promoted to production)" : "";
+        let msg = `Patched MCP server "${record.name}" → v${version.version}${promoted} (${params.patches.length} patch(es))`;
         if (loadError) msg += ` — sandbox load failed: ${loadError}`;
         return text(msg);
       }

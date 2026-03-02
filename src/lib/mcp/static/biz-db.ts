@@ -171,7 +171,12 @@ export const bizDbMcp: McpProvider = {
             await deleteMappings(userName, dropped);
           }
 
-          return text(`OK — ${result.rowCount ?? 0} row(s) affected. Command: ${result.command}`);
+          // Return JSON so sandbox callToolSync can reliably parse the result.
+          // If the query includes a RETURNING clause, include the returned rows.
+          if (result.rows && result.rows.length > 0) {
+            return json({ rows: result.rows, rowCount: result.rowCount ?? 0, command: result.command });
+          }
+          return json({ ok: true, rowCount: result.rowCount ?? 0, command: result.command });
         }
       }
 

@@ -46,9 +46,9 @@ export const langfuseAdminMcp: McpProvider = {
         inputSchema: { type: "object" as const, properties: {} },
       },
       {
-        name: "get_prompt",
+        name: "get_prompts",
         description:
-          "Get prompt template(s) by name. Returns an array of results with full template content, version, and labels. For a single prompt, pass a one-element array.",
+          "Get prompt templates by name. Returns an array of results with full template content, version, and labels. For a single prompt, pass a one-element array.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -106,7 +106,7 @@ export const langfuseAdminMcp: McpProvider = {
         return json(list);
       }
 
-      case "get_prompt": {
+      case "get_prompts": {
         const { names } = GetPromptParams.parse(args);
         const results = await Promise.allSettled(
           names.map(async (promptName) => {

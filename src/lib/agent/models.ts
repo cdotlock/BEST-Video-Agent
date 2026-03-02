@@ -18,7 +18,7 @@ export interface ModelOption {
  */
 export const MODEL_OPTIONS: ModelOption[] = [
   { id: "anthropic/claude-sonnet-4.6", label: "Sonnet", default: true },
-  { id: "anthropic/claude-opus-4", label: "Opus" },
+  { id: "anthropic/claude-opus-4.6", label: "Opus" },
 ];
 
 /* ---- Derived helpers (do not edit) ---- */

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { listEpisodes, createEpisode } from "@/lib/services/video-workflow-service";
+import {
+  listEpisodes,
+  createEpisode,
+  runInitWorkflow,
+} from "@/lib/services/video-workflow-service";
 
 /** GET /api/video/novels/[novelId]/episodes — list all episodes for a novel */
 export async function GET(
@@ -43,13 +47,25 @@ export async function POST(
   }
 
   try {
-    const result = await createEpisode(
+    const episode = await createEpisode(
       novelId,
       parsed.data.scriptKey,
       parsed.data.scriptName ?? null,
       parsed.data.scriptContent ?? null,
     );
-    return NextResponse.json(result, { status: 201 });
+
+    // If script content is provided, run init_workflow to extract
+    // structured info (characters, costumes, etc.) and store in DB.
+    let initResult = null;
+    if (parsed.data.scriptContent) {
+      initResult = await runInitWorkflow(
+        novelId,
+        episode.id,
+        parsed.data.scriptContent,
+      );
+    }
+
+    return NextResponse.json({ id: episode.id, initResult }, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

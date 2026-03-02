@@ -1,16 +1,67 @@
+import { buildResourceRegistryContext } from "@/lib/services/key-resource-context";
+import { listBySession } from "@/lib/services/key-resource-service";
+import { getCurrentSessionId } from "@/lib/request-context";
+import type { Prisma } from "@/generated/prisma";
+
 /**
  * ContextProvider — generic interface for dynamic context injection.
  *
- * An agent runner can accept an optional ContextProvider. Before each LLM call,
- * it calls `build()` to get the latest context string, which is prepended to the
- * system prompt. This enables per-iteration state refresh without modifying the
- * core agent loop.
+ * Before each LLM call, `build()` is called to get the latest system state.
+ * The result is injected as a user-role message in the context pair:
+ *   assistant: "What is the current system state?"
+ *   user: <ContextProvider.build() output>
  */
 export interface ContextProvider {
-  /**
-   * Build the current context string.
-   * Called before every LLM invocation — must return fresh data each time.
-   * The returned string is injected at the top of the system prompt.
-   */
+  /** Build the current system state string. Called every LLM iteration. */
   build(): Promise<string>;
+}
+
+/**
+ * Base ContextProvider — provides key resource state (JSON + registry).
+ * Used as the default when no domain-specific provider is configured.
+ * Domain providers (e.g. VideoContextProvider) should extend this.
+ *
+ * sessionId is resolved lazily from requestContext if not provided.
+ */
+export class BaseContextProvider implements ContextProvider {
+  constructor(protected readonly explicitSessionId?: string) {}
+
+  protected getSessionId(): string | undefined {
+    return this.explicitSessionId ?? getCurrentSessionId();
+  }
+
+  async build(): Promise<string> {
+    const sid = this.getSessionId();
+    if (!sid) return "";
+
+    const parts: string[] = [];
+
+    // Key JSON resources
+    const keyJsonCtx = await this.buildKeyJsonContext(sid);
+    if (keyJsonCtx) parts.push(keyJsonCtx);
+
+    // Resource registry (images, videos, etc.)
+    const registryCtx = await buildResourceRegistryContext(sid);
+    if (registryCtx) parts.push(registryCtx);
+
+    return parts.join("\n\n");
+  }
+
+  protected async buildKeyJsonContext(sessionId: string): Promise<string | null> {
+    const resources = await listBySession(sessionId);
+    const jsonResources = resources.filter(
+      (r) => r.mediaType === "json" && r.data != null,
+    );
+    if (jsonResources.length === 0) return null;
+
+    const items = jsonResources.map((r) => {
+      const label = r.title ?? r.key;
+      const json =
+        typeof r.data === "string"
+          ? r.data
+          : JSON.stringify(r.data as Prisma.JsonValue, null, 2);
+      return `## ${label}\n\`\`\`json\n${json}\n\`\`\``;
+    });
+    return `# Key Data (latest)\n\n${items.join("\n\n")}`;
+  }
 }

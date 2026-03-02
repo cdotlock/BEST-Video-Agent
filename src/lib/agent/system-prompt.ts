@@ -1,85 +1,101 @@
 import { listSkills } from "@/lib/services/skill-service";
+import { getSkill } from "@/lib/services/skill-service";
+import { registry } from "@/lib/mcp/registry";
 
-const BASE_PROMPT = `You are Agent Forge, an AI assistant with access to tools provided by MCP (Model Context Protocol) servers.
+/* ------------------------------------------------------------------ */
+/*  Static behavioural rules                                           */
+/* ------------------------------------------------------------------ */
 
-You can manage skills (knowledge documents), dynamic MCP servers, and APIs (business database CRUD endpoints). Use the available tools to help the user.
+const RULES = `You are Agent Forge, an AI assistant with access to tools provided by MCP (Model Context Protocol) servers.
 
-## Behaviour
-- **Skills are system knowledge.** Available Skills are listed below with brief descriptions.
-- **ALWAYS read full skill content via \`skills__get\` BEFORE using related tools or answering related questions.**
-- Skills marked with 🔧 are core system architecture docs — you MUST read them before performing any related operations.
-- **Skills are user-managed. Never create/update/import skills unless explicitly asked.**
+## Core Rules
 
-## MCP Architecture
-MCP servers provide tools you can call. There are three types:
+### Skills
+- Skills are system knowledge documents managed by the \`skills\` MCP.
+- Always call \`skills__get\` to read full content **before** using related tools.
+- Never create, update, or import skills unless the user explicitly asks.
 
-1. **Static MCPs** — Core system MCPs (skills, mcp_manager, ui, memory) that are always loaded and cannot be unloaded.
-2. **Catalog MCPs** — Built-in MCPs (biz_db, video_mgr, oss, apis, subagent, langfuse) that require environment configuration. Check `available: true` in `mcp_manager__list` before loading.
-3. **Dynamic MCPs** — User-created **executable JavaScript code** running in QuickJS WebAssembly sandbox. Created via `mcp_manager__create`, stored in DB, versioned like Skills.
+### MCP Servers
+MCP servers provide the tools you can call. Three types exist:
 
-### On-demand Loading
-Only Static MCPs are always loaded. All others (Catalog + Dynamic) must be loaded on-demand via `mcp_manager__load`. You can ONLY use tools from MCPs that are currently loaded.
+1. **Static** — Always loaded. Cannot be unloaded.
+2. **Catalog** — Built-in but require env configuration. Load on-demand via \`mcp_manager__load\`. Check availability with \`mcp_manager__list_available\` first.
+3. **Dynamic** — User-created JS code stored in DB. Read the \`dynamic-mcp-builder\` skill before creating or updating any Dynamic MCP.
 
-**IMPORTANT: If a tool name starts with a prefix you don't recognise in your current tool list, it means that MCP is NOT loaded yet. Do NOT guess what the tool does or fabricate a response — load the MCP first.**
+**If a tool prefix is not in your current tool list, that MCP is not loaded — load it first, never guess.**
 
-### How to load MCPs
-1. Check the Available Skills section below. Each skill shows \`[needs: MCP1, MCP2]\` — these are the MCPs whose tools the skill depends on.
-2. Before starting a task, identify which skills are relevant, then call \`mcp_manager__load({ names: ["<mcp_name>"] })\` for every MCP listed in their \`[needs: ...]\`.
-3. After loading, that MCP's tools become available in the next tool-call round.
-4. If you are unsure which MCPs exist, call \`mcp_manager__list_available\` first.
+### Tool Call Memory
+Previous tool results may be compressed: \`[memory] summary (recall:call_xxx)\`.
+Use \`memory__recall\` only when the summary lacks detail you need.
 
-### Creating Dynamic MCPs
-**Dynamic MCPs are executable code.** When creating or updating MCP code:
-- **MUST follow the exact structure defined in `dynamic-mcp-builder` skill** (module.exports with tools array + callTool function)
-- **NO Node.js APIs** — No `require`, `fs`, `Buffer`, `process`. Only sandbox globals: `fetchSync`, `console.log`, `getSkill`, `callTool`
-- **Sandbox constraints** — 128MB memory, 30s timeout per tool call, no async init
-- **Always read `dynamic-mcp-builder` skill BEFORE creating/updating any MCP code**
+### Error Handling
+When a tool call fails, report the error to the user. Do not fabricate results.`;
 
-### Loading sequence (mandatory)
-**Before executing ANY task, follow this exact sequence:**
-
-1. **Identify relevant skills** — Check the Available Skills list below
-2. **Read skill content** — Call \`skills__get(["skill-name"])\` to load full instructions
-3. **Load required MCPs** — Check skill's \`[needs: ...]\` and call \`mcp_manager__load\` for each
-4. **Proceed with task** — Follow the instructions in the skill content
-
-**Do NOT skip step 2.** The skill description is only a trigger — the actual constraints, parameters, naming conventions, and workflows are in the skill body. Acting without reading the full skill will cause incorrect operations.
-
-## Tool Call Memory
-Previous tool call results are automatically compressed into summaries to save context.
-Compressed entries appear as: \`[memory] summary (recall:call_xxx)\`
-If a summary does not contain enough detail for your current task, use \`memory__recall\` with the recall ID to retrieve the full original result.
-Do NOT recall unless you specifically need details that the summary omits.`
+/* ------------------------------------------------------------------ */
+/*  System prompt: static rules + active MCP descriptions              */
+/* ------------------------------------------------------------------ */
 
 /**
- * Build system prompt with skill index injected.
- * Only skill names + descriptions are included (progressive disclosure).
- * Includes both DB skills and code-defined builtins.
+ * Build the full system prompt.
+ * Static rules + dynamic active MCP list (with skill index under the skills MCP).
  */
-export async function buildSystemPrompt(): Promise<string> {
-  const skills = await listSkills();
-  const parts: string[] = [BASE_PROMPT];
+export async function buildSystemPrompt(preloadedSkills?: string[]): Promise<string> {
+  const parts: string[] = [RULES];
 
-  if (skills.length > 0) {
-    // Core architecture skills that define system fundamentals
-    const coreSkills = new Set([
-      "skill-creator",
-      "dynamic-mcp-builder",
-      "business-database",
-      "api-builder",
-      "video-mgr",
-      "subagent",
-    ]);
-
-    const skillIndex = skills
-      .map((s) => {
-        const icon = coreSkills.has(s.name) ? "🔧 " : "";
-        const mcps = s.requiresMcps.length > 0 ? ` [needs: ${s.requiresMcps.join(", ")}]` : "";
-        return `- ${icon}**${s.name}**: ${s.description}${mcps}`;
-      })
-      .join("\n");
-    parts.push(`## Available Skills\n${skillIndex}\n\n**Remember:** Always call \`skills__get\` to read full skill content before using related tools. The description above is only a summary — critical details like parameters, naming conventions, and constraints are in the skill body.`);
-  }
+  // Active MCP descriptions
+  const mcpSection = await buildMcpSection(preloadedSkills);
+  parts.push(mcpSection);
 
   return parts.join("\n\n");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Active MCP description builder                                     */
+/* ------------------------------------------------------------------ */
+
+async function buildMcpSection(preloadedSkills?: string[]): Promise<string> {
+  const providers = registry.listProviders();
+  const lines: string[] = ["## Active MCPs"];
+
+  for (const provider of providers) {
+    const tools = await provider.listTools();
+    const toolNames = tools.map((t) => `\`${t.name}\``).join(", ");
+
+    if (provider.name === "skills") {
+      // Embed skill index under the skills MCP
+      lines.push(`### \`skills\``);
+      lines.push(`Tools: ${toolNames}`);
+      await appendSkillIndex(lines, preloadedSkills);
+    } else {
+      lines.push(`### \`${provider.name}\``);
+      lines.push(`Tools: ${toolNames}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+async function appendSkillIndex(lines: string[], preloadedSkills?: string[]): Promise<void> {
+  const skills = await listSkills();
+  if (skills.length === 0) return;
+
+  lines.push("Available skills:");
+  for (const s of skills) {
+    const mcps = s.requiresMcps.length > 0 ? ` [needs: ${s.requiresMcps.map((m) => `\`${m}\``).join(", ")}]` : "";
+    lines.push(`- **${s.name}**: ${s.description}${mcps}`);
+  }
+
+  // Append pre-loaded skill content inline
+  if (preloadedSkills?.length) {
+    const loaded: string[] = [];
+    for (const name of preloadedSkills) {
+      const skill = await getSkill(name);
+      if (skill) loaded.push(`#### ${skill.name}\n${skill.content}`);
+    }
+    if (loaded.length > 0) {
+      lines.push("");
+      lines.push("Pre-loaded skill content (no need to call `skills__get`):");
+      lines.push(loaded.join("\n\n"));
+    }
+  }
 }

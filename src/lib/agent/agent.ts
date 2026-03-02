@@ -15,8 +15,7 @@ import {
   stripDanglingToolCalls,
 } from "@/lib/services/chat-session-service";
 import { buildSystemPrompt } from "./system-prompt";
-import { getSkill } from "@/lib/services/skill-service";
-import type { ContextProvider } from "./context-provider";
+import { BaseContextProvider, type ContextProvider } from "./context-provider";
 import type { ChatMessage, ToolCall } from "./types";
 import { uploadDataUrl } from "@/lib/services/oss-service";
 import {
@@ -25,7 +24,6 @@ import {
   compressMessages,
 } from "./eviction";
 import { requestContext } from "@/lib/request-context";
-import { listBySession as listKeyResources } from "@/lib/services/key-resource-service";
 
 /* ------------------------------------------------------------------ */
 /*  Key resource extraction from specific tools                        */
@@ -154,46 +152,6 @@ async function preloadMcps(names: string[]): Promise<void> {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Skill-enriched system prompt                                       */
-/* ------------------------------------------------------------------ */
-
-async function buildEnrichedSystemPrompt(config?: AgentConfig): Promise<string> {
-  const base = await buildSystemPrompt();
-  if (!config?.skills?.length) return base;
-
-  const skillParts: string[] = [];
-  for (const skillName of config.skills) {
-    const skill = await getSkill(skillName);
-    if (skill) {
-      skillParts.push(`### Skill: ${skill.name}\n${skill.content}`);
-    }
-  }
-
-  if (skillParts.length === 0) return base;
-  return base + "\n\n## Pre-loaded Skills (full content — no need to call skills__get)\n\n" + skillParts.join("\n\n---\n\n");
-}
-
-/* ------------------------------------------------------------------ */
-/*  Key JSON context injection                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Build context string from session's key JSON resources.
- * Returns null if no JSON key resources exist.
- */
-async function buildKeyJsonContext(sessionId: string): Promise<string | null> {
-  const resources = await listKeyResources(sessionId);
-  const jsonResources = resources.filter((r) => r.mediaType === "json" && r.data != null);
-  if (jsonResources.length === 0) return null;
-
-  const parts = jsonResources.map((r) => {
-    const label = r.title ?? r.key;
-    const json = typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
-    return `## ${label}\n\`\`\`json\n${json}\n\`\`\``;
-  });
-  return "# Key Data (latest)\n\n" + parts.join("\n\n");
-}
 
 /* ------------------------------------------------------------------ */
 /*  Per-session concurrency lock                                       */
@@ -373,7 +331,8 @@ async function runAgentInnerCore(
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(config?.skills);
+  const ctxProvider = config?.contextProvider ?? new BaseContextProvider();
 
   // --- Eviction setup (compression only; recall reads from DB) ---
   const tracker = new ToolCallTracker();
@@ -397,17 +356,21 @@ async function runAgentInnerCore(
 }
 
   while (true) {
-    // Inject key JSON resources into system prompt
-    const keyJsonCtx = await buildKeyJsonContext(session.id);
-    const fullSystemPrompt = keyJsonCtx
-      ? systemPrompt + "\n\n" + keyJsonCtx
-      : systemPrompt;
+    // Build system state context (refreshed every iteration)
+    const stateCtx = await ctxProvider.build();
 
     // Rebuild compressed LLM context each iteration
     const allRaw = [...session.messages, ...newMessages];
     const compressed = compressMessages(allRaw, tracker);
     const llmMessages: LlmMessage[] = [
-      { role: "system", content: fullSystemPrompt },
+      { role: "system", content: systemPrompt },
+      // Context pair: only present when ContextProvider returns state
+      ...(stateCtx
+        ? [
+            { role: "assistant" as const, content: "当前系统最新状态是什么？" },
+            { role: "user" as const, content: `[real-time system state — 以此为准]\n${stateCtx}` },
+          ]
+        : []),
       ...compressed.map(chatMsgToLlm),
     ];
 
@@ -537,8 +500,8 @@ async function runAgentStreamInnerCore(
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
-  // Build base system prompt once (with skill injection if configured)
-  const baseSystemPrompt = await buildEnrichedSystemPrompt(config);
+  const systemPrompt = await buildSystemPrompt(config?.skills);
+  const ctxProvider = config?.contextProvider ?? new BaseContextProvider();
 
   const tracker = new ToolCallTracker();
   scanMessages(session.messages, tracker);
@@ -565,25 +528,21 @@ async function runAgentStreamInnerCore(
   while (true) {
     if (signal?.aborted) break;
 
-    // If a ContextProvider is set, refresh dynamic context every iteration
-    const dynamicContext = config?.contextProvider
-      ? await config.contextProvider.build()
-      : null;
-    const systemPrompt = dynamicContext
-      ? dynamicContext + "\n\n---\n\n" + baseSystemPrompt
-      : baseSystemPrompt;
-
-    // Inject key JSON resources into system prompt
-    const keyJsonCtx = await buildKeyJsonContext(session.id);
-    const fullSystemPrompt = keyJsonCtx
-      ? systemPrompt + "\n\n" + keyJsonCtx
-      : systemPrompt;
+    // Build system state context (refreshed every iteration)
+    const stateCtx = await ctxProvider.build();
 
     // Rebuild compressed LLM context each iteration
     const allRaw = [...session.messages, ...newMessages];
     const compressed = compressMessages(allRaw, tracker);
     const llmMessages: LlmMessage[] = [
-      { role: "system", content: fullSystemPrompt },
+      { role: "system", content: systemPrompt },
+      // Context pair: only present when ContextProvider returns state
+      ...(stateCtx
+        ? [
+            { role: "assistant" as const, content: "当前系统最新状态是什么？" },
+            { role: "user" as const, content: `[real-time system state — 以此为准]\n${stateCtx}` },
+          ]
+        : []),
       ...compressed.map(chatMsgToLlm),
     ];
 

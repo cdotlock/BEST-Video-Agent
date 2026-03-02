@@ -26,8 +26,8 @@ Langfuse 是外部 prompt 版本管理系统。prompt 模板由运营人员在 L
 ## 可用工具
 
 - \`langfuse__list_prompts\` — 列出所有 prompt（名称和元数据，不含内容）
-- \`langfuse__get_prompt\` — 获取 prompt 模板原文（含 \`{{variable}}\` 占位符）
-- \`langfuse__compile_prompt\` — 获取并编译 prompt（替换变量），返回可直接执行的最终 prompt
+- \`langfuse__get_prompts\` — 获取 prompt 模板原文（含 \`{{variable}}\` 占位符），支持批量
+- \`langfuse__compile_prompts\` — 获取并编译 prompt（替换变量），返回可直接执行的最终 prompt，支持批量
 
 ## 变量语法
 
@@ -65,10 +65,10 @@ Prompt 名称遵循 \`{workflow}__{step}__{type}\` 格式：
 ## 典型工作流
 
 1. 调用 \`langfuse__list_prompts\` 发现可用 prompt
-2. 调用 \`langfuse__compile_prompt\` 编译（传入变量）
+2. 调用 \`langfuse__compile_prompts\` 编译（传入变量数组）
 3. 将编译后的 prompt 传给 \`subagent__run_text\` 执行
 
-**不要** 调用 \`langfuse__get_prompt\` 后自行拼接变量。compile_prompt 一步完成，更可靠。
+**不要** 调用 \`langfuse__get_prompts\` 后自行拼接变量。compile_prompts 一步完成，更可靠。
 
 ## 约束
 

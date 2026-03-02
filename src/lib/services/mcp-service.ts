@@ -62,6 +62,16 @@ export const McpVersionParams = z.object({
   version: z.number().int().positive(),
 });
 
+export const McpPatchParams = z.object({
+  name: z.string().min(1),
+  patches: z.array(z.object({
+    search: z.string().min(1),
+    replace: z.string(),
+  })).min(1),
+  description: z.string().nullish(),
+  promote: z.boolean().optional().default(true),
+});
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
@@ -291,6 +301,67 @@ export async function updateMcpServer(
       version: nextVersion,
       description: params.description ?? null,
       code: params.code,
+    },
+  });
+
+  let record: McpServer = found;
+  let loadError: string | undefined;
+
+  if (params.promote) {
+    record = await prisma.mcpServer.update({
+      where: { id: found.id },
+      data: { productionVersion: nextVersion },
+    });
+    if (record.enabled) {
+      loadError = await loadProductionToSandbox(record);
+    }
+  }
+
+  return { record, version: newVer, loadError };
+}
+
+/** Apply search-and-replace patches to the current production code, creating a new version. */
+export async function patchMcpServer(
+  params: z.infer<typeof McpPatchParams>,
+): Promise<McpMutationResult> {
+  rejectIfReserved(params.name);
+  const found = await prisma.mcpServer.findUnique({
+    where: { name: params.name },
+    include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+  });
+  if (!found) throw new Error(`MCP server "${params.name}" not found`);
+
+  // Read current production code
+  const prodVer = await prisma.mcpServerVersion.findUnique({
+    where: {
+      mcpServerId_version: {
+        mcpServerId: found.id,
+        version: found.productionVersion,
+      },
+    },
+  });
+  if (!prodVer) throw new Error(`No production code found for "${params.name}" v${found.productionVersion}`);
+
+  // Apply patches sequentially
+  let code = prodVer.code;
+  for (const patch of params.patches) {
+    if (!code.includes(patch.search)) {
+      throw new Error(
+        `Patch failed: search string not found in current code.\n` +
+        `search: ${patch.search.slice(0, 120)}${patch.search.length > 120 ? "…" : ""}`,
+      );
+    }
+    code = code.replaceAll(patch.search, patch.replace);
+  }
+
+  // Create new version with patched code
+  const nextVersion = (found.versions[0]?.version ?? 0) + 1;
+  const newVer = await prisma.mcpServerVersion.create({
+    data: {
+      mcpServerId: found.id,
+      version: nextVersion,
+      description: params.description ?? `patch: ${params.patches.length} change(s)`,
+      code,
     },
   });
 

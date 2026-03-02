@@ -62,10 +62,9 @@ export default function VideoWorkflowPage() {
     if (!data.selectedEpisode) return null;
     return {
       novelId,
-      novelName,
       scriptKey: data.selectedEpisode.scriptKey,
     };
-  }, [novelId, novelName, data.selectedEpisode]);
+  }, [novelId, data.selectedEpisode]);
 
   /* ---- Handlers ---- */
   const handleSelectEpisode = useCallback(
@@ -120,6 +119,7 @@ setAutoMessage("请根据EP内容，执行全部视频工作流");
           novelName={novelName}
           episodes={data.episodes}
           isLoading={data.isLoadingEpisodes}
+          isUploading={data.isUploading}
           selectedEpisode={data.selectedEpisode}
           onSelectEpisode={handleSelectEpisode}
           onDeleteEpisode={(ep) => { if (confirm(`Delete ${ep.scriptKey}?`)) void data.deleteEpisode(ep.id); }}

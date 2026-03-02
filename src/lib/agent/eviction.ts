@@ -18,8 +18,8 @@ const EPHEMERAL = new Set([
   "ui__request_upload",
   // mcp_manager
   "mcp_manager__load", "mcp_manager__unload", "mcp_manager__create",
-  "mcp_manager__update_code", "mcp_manager__toggle", "mcp_manager__delete",
-  "mcp_manager__reload", "mcp_manager__set_production",
+  "mcp_manager__update_code", "mcp_manager__patch_code", "mcp_manager__toggle",
+  "mcp_manager__delete", "mcp_manager__reload", "mcp_manager__set_production",
   // apis
   "apis__create", "apis__update", "apis__delete",
   "apis__toggle", "apis__set_production",
@@ -98,16 +98,22 @@ function generateSummary(
 
   /* langfuse */
   if (
-    toolName === "langfuse__compile_prompt" ||
-    toolName === "langfuse_admin__compile_prompt"
+    toolName === "langfuse__compile_prompts" ||
+    toolName === "langfuse_admin__compile_prompts"
   ) {
-    return `langfuse.compile("${args?.name ?? "?"}"): ${result.length} 字符`;
+    const names = Array.isArray(args?.items)
+      ? (args.items as Array<{ name?: string }>).map(item => item.name).filter(Boolean).join(", ")
+      : "?";
+    return `langfuse.compile_prompts([${names}]): ${result.length} 字符`;
   }
   if (
-    toolName === "langfuse__get_prompt" ||
-    toolName === "langfuse_admin__get_prompt"
+    toolName === "langfuse__get_prompts" ||
+    toolName === "langfuse_admin__get_prompts"
   ) {
-    return `langfuse.get_prompt("${args?.name ?? "?"}"): 返回模板`;
+    const names = Array.isArray(args?.names)
+      ? (args.names as string[]).join(", ")
+      : "?";
+    return `langfuse.get_prompts([${names}]): 返回模板`;
   }
   if (
     toolName === "langfuse__list_prompts" ||

@@ -7,7 +7,6 @@ import { resolveModel } from "@/lib/agent/models";
 
 const VideoContextSchema = z.object({
   novelId: z.string().min(1),
-  novelName: z.string().min(1),
   scriptKey: z.string().min(1),
 });
 
@@ -40,7 +39,6 @@ export async function POST(req: NextRequest) {
 
   const contextProvider = new VideoContextProvider({
     novelId: video_context.novelId,
-    novelName: video_context.novelName,
     scriptKey: video_context.scriptKey,
   });
 

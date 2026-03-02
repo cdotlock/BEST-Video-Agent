@@ -5,7 +5,13 @@ interface RequestContext {
   sessionId?: string;
 }
 
-export const requestContext = new AsyncLocalStorage<RequestContext>();
+// Survive Next.js HMR — same pattern as registry.ts
+const g = globalThis as unknown as {
+  __requestContext?: AsyncLocalStorage<RequestContext>;
+};
+
+export const requestContext =
+  g.__requestContext ?? (g.__requestContext = new AsyncLocalStorage<RequestContext>());
 
 export function getCurrentUserName(): string | undefined {
   return requestContext.getStore()?.userName;

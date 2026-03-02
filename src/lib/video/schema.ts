@@ -50,13 +50,20 @@ export async function ensureVideoSchema(): Promise<void> {
 
   // 2. novel_scripts (episode container)
   const existing = await resolveTable(GLOBAL_USER, NOVEL_SCRIPTS_LOGICAL);
+  let physicalName: string;
   if (existing) {
-    await bizPool.query(NOVEL_SCRIPTS_DDL.replace("$TABLE", existing.physicalName));
+    physicalName = existing.physicalName;
+    await bizPool.query(NOVEL_SCRIPTS_DDL.replace("$TABLE", physicalName));
   } else {
-    const physicalName = await ensureMapping(GLOBAL_USER, NOVEL_SCRIPTS_LOGICAL);
+    physicalName = await ensureMapping(GLOBAL_USER, NOVEL_SCRIPTS_LOGICAL);
     await bizPool.query(NOVEL_SCRIPTS_DDL.replace("$TABLE", physicalName));
     console.log(`[video-schema] Created table "${NOVEL_SCRIPTS_LOGICAL}" → "${physicalName}"`);
   }
+
+  // 3. Ensure init_result column exists (stores init_workflow output)
+  await bizPool.query(
+    `ALTER TABLE "${physicalName}" ADD COLUMN IF NOT EXISTS init_result JSONB`,
+  );
 }
 
 /** The logical names of all video workflow tables. */

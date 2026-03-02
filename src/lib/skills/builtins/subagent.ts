@@ -31,7 +31,7 @@ requires_mcps:
 
 ### 参数
 
-- \`prompt\`（必填）— 要执行的 prompt（通常来自 \`langfuse__compile_prompt\` 的输出）
+- \`prompt\`（必填）— 要执行的 prompt（通常来自 \`langfuse__compile_prompts\` 的输出）
 - \`model\`（必填）— 模型名称，**没有默认值**，必须由调用方明确指定
 - \`imageUrls\`（可选）— 图片 URL 数组，用于多模态任务（如看图生成描述）
 - \`outputSchema\`（可选）— JSON Schema 对象。传入后 subagent 会自动校验输出：
@@ -46,8 +46,9 @@ requires_mcps:
 模型名称由具体的业务 skill 决定，不由 subagent 自行选择。常见模型：
 
 - \`google/gemini-3.1-pro-preview\` — 文本生成、JSON 解析、提示词生成
-- \`google/gemini-3-pro-image-preview\` — 需要理解图片的多模态任务
 - \`z-ai/glm-5\` — 长文本分析、章节处理
+- \`anthropic/claude-sonnet-4.6\` — 高质量文本生成、复杂推理
+- \`anthropic/claude-opus-4.6\` — 最强推理、高难度任务
 
 ## 典型工作流
 
@@ -55,7 +56,7 @@ requires_mcps:
 
 最常见的模式：
 
-1. 调用 \`langfuse__compile_prompt\` 编译 prompt
+1. 调用 \`langfuse__compile_prompts\` 编译 prompt
 2. 调用 \`subagent__run_text\` 执行，指定合适的 model
 3. 解析返回结果
 
@@ -63,11 +64,13 @@ requires_mcps:
 
 \\\`\\\`\\\`
 # Step 1: 编译 prompt
-langfuse__compile_prompt({
-  name: "common__gen_scenery_shot__prompt",
-  variables: { style: "日漫风格", scene_description: "校园黄昏" }
+langfuse__compile_prompts({
+  items: [{
+    name: "common__gen_scenery_shot__prompt",
+    variables: { style: "日漫风格", scene_description: "校园黄昏" }
+  }]
 })
-→ { compiledPrompt: "日漫风格，请根据以下剧情生成场景描述：校园黄昏" }
+→ [{ status: "ok", name: "...", compiledPrompt: "日漫风格，请根据以下剧情生成场景描述：校园黄昏" }]
 
 # Step 2: 执行
 subagent__run_text({
@@ -121,7 +124,7 @@ subagent__run_text({
 subagent__run_text({
   tasks: [{
     prompt: "描述这张图片中人物的动作和表情",
-    model: "google/gemini-3-pro-image-preview",
+    model: "google/gemini-3.1-pro-preview",
     imageUrls: ["https://oss.example.com/scene.png"]
   }]
 })

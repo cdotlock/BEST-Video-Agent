@@ -10,6 +10,7 @@ import type {
 export interface UseVideoDataReturn {
   episodes: EpisodeSummary[];
   isLoadingEpisodes: boolean;
+  isUploading: boolean;
   selectedEpisode: EpisodeSummary | null;
   selectEpisode: (ep: EpisodeSummary | null) => void;
   resources: DomainResources | null;
@@ -29,6 +30,7 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
   const [selectedEpisode, setSelectedEpisode] = useState<EpisodeSummary | null>(null);
   const [resources, setResources] = useState<DomainResources | null>(null);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshEpisodes = useCallback(async (): Promise<EpisodeSummary[]> => {
@@ -80,6 +82,7 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
 
   const uploadEpisode = useCallback(
     async (scriptKey: string, scriptName: string | null, content: string | null) => {
+      setIsUploading(true);
       try {
         await fetchJson(
           `/api/video/novels/${encodeURIComponent(novelId)}/episodes`,
@@ -92,6 +95,8 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
         await refreshEpisodes();
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to create episode");
+      } finally {
+        setIsUploading(false);
       }
     },
     [novelId, refreshEpisodes],
@@ -132,6 +137,7 @@ export function useVideoData(novelId: string): UseVideoDataReturn {
   return {
     episodes,
     isLoadingEpisodes,
+    isUploading,
     selectedEpisode,
     selectEpisode,
     resources,

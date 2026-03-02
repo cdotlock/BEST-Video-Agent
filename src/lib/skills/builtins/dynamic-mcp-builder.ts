@@ -75,16 +75,23 @@ if (instructions) {
 返回 MCP CallToolResult 对象（\`{ content: [...] }\`）。
 
 \`\`\`js
-// 查询业务数据库
+// 查询业务数据库 — 返回 { rows: [...], rowCount: N }
 const result = callToolSync("biz_db__sql", {
   sql: "SELECT * FROM characters WHERE novel_id = 1"
 });
-const rows = JSON.parse(result.content[0].text).rows;
+const { rows } = JSON.parse(result.content[0].text);
 
-// 写入也用同一个 tool
-callToolSync("biz_db__sql", {
+// 写入操作 — 返回 { ok: true, rowCount: N, command: "INSERT" }
+const wr = callToolSync("biz_db__sql", {
   sql: "INSERT INTO logs (message) VALUES ('hello')"
 });
+const { rowCount, command } = JSON.parse(wr.content[0].text);
+
+// INSERT ... RETURNING — 返回 { rows: [{id: "..."}], rowCount: 1, command: "INSERT" }
+const ins = callToolSync("biz_db__sql", {
+  sql: "INSERT INTO items (name) VALUES ('foo') RETURNING id"
+});
+const { rows: [newRow] } = JSON.parse(ins.content[0].text);
 
 // 调用其他 MCP provider 的 tool
 const tables = callToolSync("biz_db__list_tables", {});
@@ -92,6 +99,28 @@ const tables = callToolSync("biz_db__list_tables", {});
 
 **注意**：命名为 \`callToolSync\` 而非 \`callTool\`，以明确表示这是同步调用（与 \`fetchSync\` 命名规则一致）。
 返回值是完整的 MCP CallToolResult，需要从 \`result.content[0].text\` 取文本内容。
+
+## 系统工具在沙盒中的行为
+
+沙盒通过 \`callToolSync\` 调用系统内置工具时，行为与主 Agent 直接调用基本一致，但有以下已知差异/限制：
+
+### biz_db__sql
+
+- **读操作**（SELECT / WITH）：返回 \`{ rows: [...], rowCount: N }\`
+- **写操作**（INSERT / UPDATE / DELETE / CREATE / ALTER / DROP / TRUNCATE）：返回 \`{ ok: true, rowCount: N, command: "UPDATE" }\`
+- **写操作 + RETURNING 子句**：返回 \`{ rows: [...], rowCount: N, command: "INSERT" }\`，rows 包含 RETURNING 的数据
+- **全部返回 JSON**，通过 \`JSON.parse(result.content[0].text)\` 解析，不会返回纯文本字符串
+
+### langfuse__*
+
+- 需要配置环境变量 \`LANGFUSE_BASE_URL\`、\`LANGFUSE_PUBLIC_KEY\`、\`LANGFUSE_SECRET_KEY\`
+- 未配置时返回明确错误：\`Tool error: Langfuse 未配置 (...)\`
+- 工具名：\`langfuse__list_prompts\`、\`langfuse__get_prompts\`（注意有 **s**）、\`langfuse__compile_prompts\`
+
+### video_mgr__*
+
+- \`video_mgr__generate_image\` 需要 session 上下文（sessionId），在沙盒中可正常使用（session context 已由框架穿透）
+- 沙盒中使用时确保调用来自真实 agent 请求（task execution），而非直接测试调用
 
 ## 代码结构（必须遵循）
 
@@ -246,6 +275,12 @@ module.exports = {
 
 ### "xxx is not defined"
 沙盒中没有 Node.js API。不能用 \`require\`、\`Buffer\` 等。可用 \`console.log\`、\`fetchSync\`、\`getSkill\`、\`callToolSync\`。
+
+### "Tool error: Langfuse 未配置"
+环境变量缺失。检查 \`.env\` 中 \`LANGFUSE_BASE_URL\` / \`LANGFUSE_PUBLIC_KEY\` / \`LANGFUSE_SECRET_KEY\` 是否设置。
+
+### \`JSON.parse\` 报 SyntaxError
+\`callToolSync\` 返回的 \`result.content[0].text\` 始终是 JSON 字符串（来自 biz_db 等系统工具）。若报 parse 错误，先打印 \`result.content[0].text\` 确认原始内容，通常是调用了错误的 tool 名（如 \`langfuse__get_prompt\` 而非 \`langfuse__get_prompts\`）。
 
 ### "Script execution timed out" / "interrupted"
 callTool 中的操作超过 30 秒。优化请求或减少循环次数。

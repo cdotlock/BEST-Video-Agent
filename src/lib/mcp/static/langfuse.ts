@@ -50,9 +50,9 @@ export const langfuseMcp: McpProvider = {
         inputSchema: { type: "object" as const, properties: {} },
       },
       {
-        name: "get_prompt",
+        name: "get_prompts",
         description:
-          "Get prompt template(s) by name from Langfuse. Returns an array of results with raw template and {{variable}} placeholders. For a single prompt, pass a one-element array.",
+          "Get prompt templates by name from Langfuse. Returns an array of results with raw template and {{variable}} placeholders. For a single prompt, pass a one-element array.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -66,9 +66,9 @@ export const langfuseMcp: McpProvider = {
         },
       },
       {
-        name: "compile_prompt",
+        name: "compile_prompts",
         description:
-          "Fetch and compile Langfuse prompt(s) by replacing {{variable}} placeholders concurrently. Returns an array of compiled prompts ready for subagent execution. For a single prompt, pass a one-element array.",
+          "Fetch and compile Langfuse prompts by replacing {{variable}} placeholders concurrently. Returns an array of compiled prompts ready for subagent execution. For a single prompt, pass a one-element array.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -110,7 +110,7 @@ export const langfuseMcp: McpProvider = {
         return json(list);
       }
 
-      case "get_prompt": {
+      case "get_prompts": {
         const { names } = GetPromptParams.parse(args);
         const results = await Promise.allSettled(
           names.map(async (promptName) => {
@@ -134,7 +134,7 @@ export const langfuseMcp: McpProvider = {
         return json(output);
       }
 
-      case "compile_prompt": {
+      case "compile_prompts": {
         const { items } = CompilePromptParams.parse(args);
         const results = await Promise.allSettled(
           items.map(async ({ name: promptName, variables }) => {

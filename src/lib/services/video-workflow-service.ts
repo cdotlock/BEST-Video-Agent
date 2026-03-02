@@ -19,6 +19,11 @@ import type {
   CategoryGroup,
   DomainResources,
 } from "@/lib/domain/resource-service";
+import { initMcp } from "@/lib/mcp/init";
+import { loadFromCatalog, isCatalogEntry } from "@/lib/mcp/catalog";
+import { registry } from "@/lib/mcp/registry";
+import { sandboxManager } from "@/lib/mcp/sandbox";
+import * as mcpService from "@/lib/services/mcp-service";
 
 export type { DomainResource, CategoryGroup, DomainResources };
 
@@ -170,6 +175,101 @@ export async function getEpisodeContent(scriptId: string): Promise<string | null
   );
   const row = rows[0] as { script_content: string | null } | undefined;
   return row?.script_content ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  init_workflow integration                                          */
+/* ------------------------------------------------------------------ */
+
+export interface InitWorkflowResult {
+  scriptId: string;
+  scriptKey: string;
+  scriptName: string;
+  missingCharacters: string[];
+  nextStep: string;
+}
+
+/**
+ * Load a dynamic MCP by name (from DB → QuickJS sandbox).
+ * No-op if already loaded.
+ */
+async function ensureDynamicMcp(name: string): Promise<void> {
+  if (registry.getProvider(name)) return;
+  if (isCatalogEntry(name)) {
+    loadFromCatalog(name);
+    return;
+  }
+  const code = await mcpService.getMcpCode(name);
+  if (!code) throw new Error(`MCP "${name}" not found in DB`);
+  const provider = await sandboxManager.load(name, code);
+  registry.replace(provider);
+}
+
+/**
+ * Run the novel-video-workflow MCP's init_workflow tool.
+ *
+ * Loads MCP infrastructure on demand, executes the tool, and stores
+ * the result in novel_scripts.init_result.
+ *
+ * Returns the init_workflow result, or null if execution fails
+ * (the episode is still created — caller should not block on failure).
+ */
+export async function runInitWorkflow(
+  novelId: string,
+  scriptDbId: string,
+  scriptContent: string,
+): Promise<InitWorkflowResult | null> {
+  try {
+    await initMcp();
+    await ensureDynamicMcp("biz_db");
+    await ensureDynamicMcp("novel-video-workflow");
+
+    const result = await registry.callTool(
+      "novel-video-workflow__init_workflow",
+      { novelId, scriptContent, scriptDbId },
+    );
+
+    const text = result.content
+      ?.map((c: Record<string, unknown>) =>
+        "text" in c ? String(c.text) : JSON.stringify(c),
+      )
+      .join("\n") ?? "";
+
+    const parsed = JSON.parse(text) as InitWorkflowResult;
+
+    // Persist init_result into novel_scripts
+    const tScripts = await physical("novel_scripts");
+    await bizPool.query(
+      `UPDATE "${tScripts}" SET init_result = $1 WHERE id = $2`,
+      [JSON.stringify(parsed), scriptDbId],
+    );
+
+    return parsed;
+  } catch (err) {
+    console.error("[video-workflow] runInitWorkflow failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Read the stored init_result for an episode.
+ */
+export async function getInitResult(
+  novelId: string,
+  scriptKey: string,
+): Promise<InitWorkflowResult | null> {
+  const tScripts = await physical("novel_scripts");
+  const { rows } = await bizPool.query(
+    `SELECT init_result FROM "${tScripts}"
+     WHERE novel_id = $1 AND script_key = $2
+     LIMIT 1`,
+    [novelId, scriptKey],
+  );
+  const row = rows[0] as { init_result: unknown } | undefined;
+  if (!row?.init_result) return null;
+  return (typeof row.init_result === "string"
+    ? JSON.parse(row.init_result)
+    : row.init_result) as InitWorkflowResult;
 }
 
 export async function getEpisodeStatus(scriptId: string): Promise<EpStatus> {
