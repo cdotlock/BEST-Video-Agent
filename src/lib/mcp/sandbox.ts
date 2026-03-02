@@ -1,9 +1,8 @@
 import { newAsyncContext, type QuickJSAsyncContext, type QuickJSHandle } from "quickjs-emscripten";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "./types";
+import type { McpProvider, ToolContext } from "./types";
 import { prisma } from "@/lib/db";
 import { registry } from "./registry";
-import { requestContext } from "@/lib/request-context";
 
 /* ------------------------------------------------------------------ */
 /*  Wrapper code injected around user JS                              */
@@ -52,13 +51,8 @@ interface SandboxInstance {
   name: string;
   /** Mutable deadline (epoch ms) for the interrupt handler. */
   deadline: number;
-  /**
-   * Captured per callTool invocation so __bridge_callTool can restore the
-   * AsyncLocalStorage request context (userName, sessionId) when it fires.
-   * QuickJS asyncify breaks the Node.js async-context chain, so we thread
-   * the store manually.
-   */
-  currentCallStore: ReturnType<typeof requestContext.getStore>;
+  /** Captured per callTool invocation so __bridge_callTool can forward it. */
+  currentCallContext: ToolContext | undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,7 +95,7 @@ export class SandboxManager {
     runtime.setMemoryLimit(this.memoryLimitBytes);
     runtime.setMaxStackSize(1024 * 1024); // 1 MB stack
 
-    const inst: SandboxInstance = { context, name, deadline: Infinity, currentCallStore: undefined };
+    const inst: SandboxInstance = { context, name, deadline: Infinity, currentCallContext: undefined };
 
     // Interrupt handler: checked periodically by QuickJS during execution
     runtime.setInterruptHandler(() => Date.now() > inst.deadline);
@@ -176,8 +170,6 @@ export class SandboxManager {
     );
 
     // bridge.callTool — asyncified: call any registered MCP tool from sandbox.
-    // QuickJS asyncify breaks Node.js AsyncLocalStorage propagation, so we
-    // capture the request context per-callTool and restore it here explicitly.
     setGlobal(
       context,
       "__bridge_callTool",
@@ -189,10 +181,7 @@ export class SandboxManager {
           const args: Record<string, unknown> = JSON.parse(argsJson) as Record<string, unknown>;
 
           console.log(`[sandbox:${name}] callTool("${toolName}")`);
-          const store = inst.currentCallStore;
-          const result = store
-            ? await requestContext.run(store, () => registry.callTool(toolName, args))
-            : await registry.callTool(toolName, args);
+          const result = await registry.callTool(toolName, args, inst.currentCallContext);
           return context.newString(JSON.stringify(result));
         },
       ),
@@ -309,12 +298,13 @@ export class SandboxManager {
       callTool: async (
         toolName: string,
         args: Record<string, unknown>,
+        context?: ToolContext,
       ): Promise<CallToolResult> => {
         const inst = this.instances.get(mcpName);
         if (!inst) throw new Error(`Sandbox "${mcpName}" not loaded`);
 
-        // Capture current request context so the bridge can restore it.
-        inst.currentCallStore = requestContext.getStore();
+        // Forward context so bridge callTool can pass it through.
+        inst.currentCallContext = context;
 
         const argsJson = JSON.stringify(args);
 

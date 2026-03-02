@@ -1,6 +1,7 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
 import {
   type McpProvider,
+  type ToolContext,
   qualifyToolName,
   parseToolName,
 } from "./types";
@@ -79,6 +80,7 @@ class McpRegistry {
   async callTool(
     fullToolName: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
     const [providerName, toolName] = parseToolName(fullToolName);
     const provider = this.providers.get(providerName);
@@ -89,7 +91,7 @@ class McpRegistry {
       };
     }
     try {
-      return await provider.callTool(toolName, args);
+      return await provider.callTool(toolName, args, context);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return {

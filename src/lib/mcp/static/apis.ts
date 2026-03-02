@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "../types";
+import type { McpProvider, ToolContext } from "../types";
 import * as svc from "@/lib/services/api-service";
 
 function text(t: string): CallToolResult {
@@ -151,6 +151,7 @@ export const apisMcp: McpProvider = {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
     switch (name) {
       /* ---------- usage ---------- */
@@ -189,7 +190,7 @@ export const apisMcp: McpProvider = {
           .parse(args);
         const results = await Promise.allSettled(
           items.map(({ api_name, operation, params }) =>
-            svc.callApiOperation(api_name, operation, params),
+            svc.callApiOperation(api_name, operation, params, context?.userName),
           ),
         );
         const output = results.map((r, i) =>

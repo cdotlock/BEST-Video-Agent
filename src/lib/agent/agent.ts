@@ -3,6 +3,7 @@ import { initMcp } from "@/lib/mcp/init";
 import { isCatalogEntry, loadFromCatalog } from "@/lib/mcp/catalog";
 import { sandboxManager } from "@/lib/mcp/sandbox";
 import * as mcpService from "@/lib/services/mcp-service";
+import type { ToolContext } from "@/lib/mcp/types";
 import {
   chatCompletion,
   chatCompletionStream,
@@ -23,7 +24,6 @@ import {
   scanMessages,
   compressMessages,
 } from "./eviction";
-import { requestContext } from "@/lib/request-context";
 
 /* ------------------------------------------------------------------ */
 /*  Key resource extraction from specific tools                        */
@@ -220,7 +220,7 @@ export async function runAgent(
   await initMcp();
 
   const session = await getOrCreateSession(sessionId, userName);
-  return withSessionLock(session.id, () => runAgentInner(userMessage, session, images, config));
+  return withSessionLock(session.id, () => runAgentInner(userMessage, session, userName, images, config));
 }
 
 export async function runAgentStream(
@@ -242,7 +242,7 @@ export async function runAgentStream(
   const session = await getOrCreateSession(sessionId, userName);
   callbacks.onSession?.(session.id);
   return withSessionLock(session.id, () =>
-    runAgentStreamInner(userMessage, session, callbacks, signal, images, config),
+    runAgentStreamInner(userMessage, session, userName, callbacks, signal, images, config),
   );
 }
 
@@ -314,25 +314,23 @@ function chatMsgToLlm(msg: ChatMessage): LlmMessage {
 async function runAgentInner(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
+  userName: string | undefined,
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
-  // Wrap with sessionId in request context (needed by memory__recall)
-  const parentStore = requestContext.getStore() ?? {};
-  return requestContext.run(
-    { ...parentStore, sessionId: session.id },
-    () => runAgentInnerCore(userMessage, session, images, config),
-  );
+  const toolCtx: ToolContext = { sessionId: session.id, userName };
+  return runAgentInnerCore(userMessage, session, toolCtx, images, config);
 }
 
 async function runAgentInnerCore(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
+  toolCtx: ToolContext,
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
   const systemPrompt = await buildSystemPrompt(config?.skills);
-  const ctxProvider = config?.contextProvider ?? new BaseContextProvider();
+  const ctxProvider = config?.contextProvider ?? new BaseContextProvider(toolCtx.sessionId);
 
   // --- Eviction setup (compression only; recall reads from DB) ---
   const tracker = new ToolCallTracker();
@@ -420,7 +418,7 @@ async function runAgentInnerCore(
         /* invalid JSON, pass empty */
       }
 
-      const result = await registry.callTool(tc.function.name, args);
+      const result = await registry.callTool(tc.function.name, args, toolCtx);
       const content =
         result.content
           ?.map((c: Record<string, unknown>) => ("text" in c ? String(c.text) : JSON.stringify(c)))
@@ -480,28 +478,27 @@ function upsertToolCall(
 async function runAgentStreamInner(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
+  userName: string | undefined,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
-  const parentStore = requestContext.getStore() ?? {};
-  return requestContext.run(
-    { ...parentStore, sessionId: session.id },
-    () => runAgentStreamInnerCore(userMessage, session, callbacks, signal, images, config),
-  );
+  const toolCtx: ToolContext = { sessionId: session.id, userName };
+  return runAgentStreamInnerCore(userMessage, session, toolCtx, callbacks, signal, images, config);
 }
 
 async function runAgentStreamInnerCore(
   userMessage: string,
   session: { id: string; messages: ChatMessage[] },
+  toolCtx: ToolContext,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   images?: string[],
   config?: AgentConfig,
 ): Promise<AgentResponse> {
   const systemPrompt = await buildSystemPrompt(config?.skills);
-  const ctxProvider = config?.contextProvider ?? new BaseContextProvider();
+  const ctxProvider = config?.contextProvider ?? new BaseContextProvider(toolCtx.sessionId);
 
   const tracker = new ToolCallTracker();
   scanMessages(session.messages, tracker);
@@ -615,7 +612,7 @@ async function runAgentStreamInnerCore(
         const t0 = Date.now();
         let toolError: string | undefined;
         try {
-          const result = await registry.callTool(tc.function.name, args);
+          const result = await registry.callTool(tc.function.name, args, toolCtx);
 
           // Side-channel: upload provider attaches _uploadRequest
           const uploadReq = (result as Record<string, unknown>)._uploadRequest;

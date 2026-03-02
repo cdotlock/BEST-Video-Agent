@@ -1,7 +1,6 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "../types";
+import type { McpProvider, ToolContext } from "../types";
 import { recallToolResult } from "@/lib/services/chat-session-service";
-import { getCurrentSessionId } from "@/lib/request-context";
 
 function text(t: string): CallToolResult {
   return { content: [{ type: "text", text: t }] };
@@ -42,12 +41,13 @@ export const memoryMcp: McpProvider = {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
     if (name !== "recall") return text(`Unknown tool: ${name}`);
 
-    const sessionId = getCurrentSessionId();
+    const sessionId = context?.sessionId;
     if (!sessionId) {
-      return text("Cannot recall: no active session context");
+      return text("Cannot recall: no session context");
     }
 
     // Collect IDs from either `id` (single) or `ids` (batch)

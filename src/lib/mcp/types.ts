@@ -3,6 +3,15 @@ import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
 export type { Tool, CallToolResult };
 
 /**
+ * Explicit execution context passed through callTool.
+ * Replaces AsyncLocalStorage — all context is threaded via parameters.
+ */
+export interface ToolContext {
+  sessionId?: string;
+  userName?: string;
+}
+
+/**
  * Internal provider interface — each static/dynamic MCP implements this.
  * Registry aggregates all providers and dispatches tool calls.
  */
@@ -13,6 +22,7 @@ export interface McpProvider {
   callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult>;
 }
 

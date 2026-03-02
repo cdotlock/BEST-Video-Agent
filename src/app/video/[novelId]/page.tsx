@@ -86,7 +86,7 @@ export default function VideoWorkflowPage() {
       if (newEp) {
         data.selectEpisode(newEp);
         setCurrentSessionId(undefined);
-setAutoMessage("请根据EP内容，执行全部视频工作流");
+setAutoMessage("EP已上传，请开始小说可视化工作流：人物卡 → 分镜 → 图片 → 视频，逐步推进");
         setChatKey(crypto.randomUUID());
       }
     },

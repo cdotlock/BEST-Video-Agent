@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import type { Api, ApiVersion, Prisma } from "@/generated/prisma";
 import { bizPool } from "@/lib/biz-db";
 import { guardQuery, guardExecute } from "@/lib/sql-guard";
-import { getCurrentUserName } from "@/lib/request-context";
 import { rewriteSqlWithResolve, extractDroppedTableNames, deleteMappings } from "@/lib/biz-db-namespace";
 
 /* ------------------------------------------------------------------ */
@@ -291,6 +290,7 @@ export async function callApiOperation(
   apiName: string,
   operationName: string,
   params: Record<string, unknown>,
+  userName?: string,
 ): Promise<ApiCallResult> {
   const api = await prisma.api.findUnique({ where: { name: apiName } });
   if (!api) throw new Error(`API "${apiName}" not found`);
@@ -329,13 +329,13 @@ export async function callApiOperation(
 
   // Rewrite logical table names → physical UUIDs via mapping table
   const autoCreate = op.type === "execute";
-  const finalSql = await rewriteSqlWithResolve(getCurrentUserName(), op.sql, autoCreate);
+  const finalSql = await rewriteSqlWithResolve(userName, op.sql, autoCreate);
   const result = await bizPool.query(finalSql, paramValues);
 
   // Clean up mappings for dropped tables
   const dropped = extractDroppedTableNames(op.sql);
   if (dropped.length > 0) {
-    await deleteMappings(getCurrentUserName(), dropped);
+    await deleteMappings(userName, dropped);
   }
 
   if (op.type === "query") {

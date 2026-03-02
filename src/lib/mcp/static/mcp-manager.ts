@@ -1,10 +1,9 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "../types";
+import type { McpProvider, ToolContext } from "../types";
 import { registry } from "../registry";
 import { getCatalogEntries, isCatalogEntry, loadFromCatalog } from "../catalog";
 import { sandboxManager } from "../sandbox";
 import { sessionMcpTracker } from "../session-tracker";
-import { getCurrentSessionId } from "@/lib/request-context";
 import * as svc from "@/lib/services/mcp-service";
 
 function text(t: string): CallToolResult {
@@ -170,10 +169,11 @@ export const mcpManagerMcp: McpProvider = {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
+    const sessionId = context?.sessionId;
     switch (name) {
       case "list": {
-        const sessionId = getCurrentSessionId();
         const visible = sessionId
           ? sessionMcpTracker.getVisible(sessionId)
           : new Set(registry.listProviders().map((p) => p.name));
@@ -191,7 +191,6 @@ export const mcpManagerMcp: McpProvider = {
         return json({ active, catalog, database });
       }
       case "list_available": {
-        const sessionId = getCurrentSessionId();
         const visible = sessionId
           ? sessionMcpTracker.getVisible(sessionId)
           : new Set(registry.listProviders().map((p) => p.name));
@@ -206,7 +205,6 @@ export const mcpManagerMcp: McpProvider = {
       case "load": {
         const nameList = args.names as string[];
         if (!Array.isArray(nameList) || nameList.length === 0) return text("Missing names parameter.");
-        const sessionId = getCurrentSessionId();
 
         const loadOne = async (n: string): Promise<string> => {
           if (isCatalogEntry(n)) {
@@ -235,7 +233,6 @@ export const mcpManagerMcp: McpProvider = {
       case "unload": {
         const { name: n } = svc.McpNameParams.parse(args);
         if (registry.isProtected(n)) return text(`Cannot unload system built-in MCP "${n}"`);
-        const sessionId = getCurrentSessionId();
         // Session-scoped: remove from this session's visibility only
         if (sessionId) {
           sessionMcpTracker.unload(sessionId, n);

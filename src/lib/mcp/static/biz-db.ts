@@ -1,8 +1,7 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "../types";
+import type { McpProvider, ToolContext } from "../types";
 import { bizPool } from "@/lib/biz-db";
 import { guardQuery, guardExecute } from "@/lib/sql-guard";
-import { getCurrentUserName } from "@/lib/request-context";
 import {
   listVisibleTables,
   resolveTable,
@@ -103,8 +102,9 @@ export const bizDbMcp: McpProvider = {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
-    const userName = getCurrentUserName();
+    const userName = context?.userName;
 
     switch (name) {
       case "list_tables": {

@@ -1,6 +1,5 @@
 import { buildResourceRegistryContext } from "@/lib/services/key-resource-context";
 import { listBySession } from "@/lib/services/key-resource-service";
-import { getCurrentSessionId } from "@/lib/request-context";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -20,14 +19,12 @@ export interface ContextProvider {
  * Base ContextProvider — provides key resource state (JSON + registry).
  * Used as the default when no domain-specific provider is configured.
  * Domain providers (e.g. VideoContextProvider) should extend this.
- *
- * sessionId is resolved lazily from requestContext if not provided.
  */
 export class BaseContextProvider implements ContextProvider {
-  constructor(protected readonly explicitSessionId?: string) {}
+  constructor(protected readonly sessionId?: string) {}
 
   protected getSessionId(): string | undefined {
-    return this.explicitSessionId ?? getCurrentSessionId();
+    return this.sessionId;
   }
 
   async build(): Promise<string> {

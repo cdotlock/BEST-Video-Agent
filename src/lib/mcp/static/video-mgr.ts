@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types";
-import type { McpProvider } from "../types";
-import { getCurrentSessionId } from "@/lib/request-context";
+import type { McpProvider, ToolContext } from "../types";
 import * as keyResourceService from "@/lib/services/key-resource-service";
 import { createResource } from "@/lib/domain/resource-service";
 
@@ -113,12 +112,13 @@ export const videoMgrMcp: McpProvider = {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    context?: ToolContext,
   ): Promise<CallToolResult> {
     switch (name) {
       case "generate_image": {
-        const sessionId = getCurrentSessionId();
+        const sessionId = context?.sessionId;
         if (!sessionId) {
-          return text("No session context — generate_image requires an active session.");
+          return text("Missing sessionId in tool context — generate_image requires a session.");
         }
         const { items } = GenerateImageParams.parse(args);
         const results = await Promise.allSettled(

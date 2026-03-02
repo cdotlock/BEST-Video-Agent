@@ -4,7 +4,6 @@ import { runAgentStream } from "@/lib/agent/agent";
 import type { StreamCallbacks, KeyResourceEvent, AgentConfig } from "@/lib/agent/agent";
 import type { ToolCall } from "@/lib/agent/types";
 import { upsertResource } from "@/lib/services/key-resource-service";
-import { requestContext } from "@/lib/request-context";
 import type { Prisma } from "@/generated/prisma";
 
 /* ------------------------------------------------------------------ */
@@ -252,18 +251,14 @@ async function executeTask(
       ...(input.model ? { model: input.model } : {}),
     };
 
-    const result = await requestContext.run(
-      { userName: input.user, sessionId },
-      () =>
-        runAgentStream(
-          input.message,
-          sessionId,
-          input.user,
-          callbacks,
-          ac.signal,
-          input.images,
-          agentConfig,
-        ),
+    const result = await runAgentStream(
+      input.message,
+      sessionId,
+      input.user,
+      callbacks,
+      ac.signal,
+      input.images,
+      agentConfig,
     );
 
     await prisma.task.update({
