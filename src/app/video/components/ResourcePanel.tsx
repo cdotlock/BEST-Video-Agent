@@ -1,51 +1,72 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { Button, Collapse, Drawer, Empty, Input, Spin, Typography, Image, Tag, App } from "antd";
+import {
+  Button,
+  Collapse,
+  Drawer,
+  Empty,
+  Input,
+  Spin,
+  Typography,
+  Image,
+  Tag,
+  App,
+} from "antd";
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import type { DomainResources, DomainResource, VideoResourceData } from "../types";
+import type {
+  DomainResources,
+  DomainResource,
+  VideoResourceData,
+} from "../types";
 import { fetchJson } from "@/app/components/client-utils";
 import { ImageDetailDrawer } from "./ImageDetailDrawer";
 import { VideoDetailDrawer } from "./VideoDetailDrawer";
-
-/* ------------------------------------------------------------------ */
-/*  Props                                                              */
-/* ------------------------------------------------------------------ */
 
 export interface ResourcePanelProps {
   resources: DomainResources | null;
   isLoading: boolean;
   scriptId: string | null;
   sessionId: string | undefined;
+  viewFilter: "all" | "image" | "video" | "json";
   onRefresh?: () => void;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
+const ASIDE_CLASS =
+  "flex h-full w-72 min-w-[260px] shrink-0 flex-col border-l border-slate-200 bg-white";
 
-const ASIDE_CLASS = "flex h-full w-56 min-w-[200px] shrink-0 flex-col border-l border-slate-800 bg-slate-950/80";
-
-export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRefresh }: ResourcePanelProps) {
+export function ResourcePanel({
+  resources,
+  isLoading,
+  scriptId,
+  sessionId,
+  viewFilter,
+  onRefresh,
+}: ResourcePanelProps) {
   const { message } = App.useApp();
 
-  /* ---- JSON editor drawer state ---- */
-  const [editingItem, setEditingItem] = useState<{ id: string; title: string; data: unknown } | null>(null);
+  const [editingItem, setEditingItem] = useState<{
+    id: string;
+    title: string;
+    data: unknown;
+  } | null>(null);
   const [editText, setEditText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  /* ---- Image detail drawer state ---- */
-  const [selectedImageGenId, setSelectedImageGenId] = useState<string | null>(null);
+  const [selectedImageGenId, setSelectedImageGenId] = useState<string | null>(
+    null,
+  );
+  const [selectedVideoResource, setSelectedVideoResource] =
+    useState<DomainResource | null>(null);
 
-  /* ---- Video detail drawer state ---- */
-  const [selectedVideoResource, setSelectedVideoResource] = useState<DomainResource | null>(null);
-
-  /* ---- Collapse expand state (controlled) ---- */
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const knownKeysRef = useRef<Set<string>>(new Set());
 
-  /* ---- Smart image rendering ---- */
-  const renderSmartImage = (url: string, alt: string, keyResourceId?: string | null) => {
+  const renderSmartImage = (
+    url: string,
+    alt: string,
+    keyResourceId?: string | null,
+  ) => {
     if (keyResourceId) {
       return (
         // eslint-disable-next-line @next/next/no-img-element
@@ -64,42 +85,49 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
         alt={alt}
         width="100%"
         style={{ display: "block" }}
-      placeholder={<div className="aspect-square w-full bg-slate-800" />}
+        placeholder={<div className="aspect-square w-full bg-slate-100" />}
         preview={true}
       />
     );
   };
 
-  /* ---- Delete handler ---- */
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!scriptId) return;
-    setDeletingIds((prev) => new Set(prev).add(id));
-    try {
-      await fetchJson(`/api/video/episodes/${encodeURIComponent(scriptId)}/resources`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceId: id }),
-      });
-      void message.success("Deleted");
-      onRefresh?.();
-    } catch {
-      void message.error("Delete failed");
-    } finally {
-      setDeletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  }, [scriptId, onRefresh]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!scriptId) return;
+      setDeletingIds((prev) => new Set(prev).add(id));
+      try {
+        await fetchJson(
+          `/api/video/episodes/${encodeURIComponent(scriptId)}/resources`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resourceId: id }),
+          },
+        );
+        void message.success("Deleted");
+        onRefresh?.();
+      } catch {
+        void message.error("Delete failed");
+      } finally {
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [scriptId, onRefresh, message],
+  );
 
-  /* ---- JSON editor ---- */
-  const openEditor = useCallback((item: { id: string; title: string; data: unknown }) => {
-    setEditingItem(item);
-    setEditText(item.data != null ? JSON.stringify(item.data, null, 2) : "");
-  }, []);
+  const openEditor = useCallback(
+    (item: { id: string; title: string; data: unknown }) => {
+      setEditingItem(item);
+      setEditText(item.data != null ? JSON.stringify(item.data, null, 2) : "");
+    },
+    [],
+  );
 
   const handleSave = useCallback(async () => {
     if (!editingItem || !scriptId) return;
@@ -112,11 +140,14 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     }
     setIsSaving(true);
     try {
-      await fetchJson(`/api/video/episodes/${encodeURIComponent(scriptId)}/resources`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceId: editingItem.id, data: parsed }),
-      });
+      await fetchJson(
+        `/api/video/episodes/${encodeURIComponent(scriptId)}/resources`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resourceId: editingItem.id, data: parsed }),
+        },
+      );
       void message.success("Saved");
       setEditingItem(null);
       onRefresh?.();
@@ -125,11 +156,8 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     } finally {
       setIsSaving(false);
     }
-  }, [editingItem, editText, scriptId, onRefresh]);
+  }, [editingItem, editText, scriptId, onRefresh, message]);
 
-  /* ---- Per media_type renderers ---- */
-
-  /* ---- Delete overlay button (shared across media types) ---- */
   const renderDeleteBtn = (id: string) => (
     <Button
       type="text"
@@ -137,25 +165,33 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
       danger
       icon={<DeleteOutlined />}
       loading={deletingIds.has(id)}
-      className="!absolute right-1 top-1 z-10 opacity-0 transition-opacity group-hover/card:opacity-100 !bg-black/60 !text-red-400 hover:!text-red-300"
-      onClick={(e) => { e.stopPropagation(); void handleDelete(id); }}
+      className="!absolute right-1 top-1 z-10 opacity-0 transition-opacity group-hover/card:opacity-100 !bg-white/90"
+      onClick={(e) => {
+        e.stopPropagation();
+        void handleDelete(id);
+      }}
       style={{ fontSize: 10, width: 22, height: 22, minWidth: 22 }}
     />
   );
 
   const renderImageItem = (r: DomainResource) => (
-    <div key={r.id} className="group/card relative overflow-hidden rounded-lg">
+    <div
+      key={r.id}
+      className="group/card relative overflow-hidden rounded-lg border border-slate-200 bg-white"
+    >
       {renderDeleteBtn(r.id)}
       {r.url ? (
         renderSmartImage(r.url, r.title ?? "Image", r.keyResourceId)
       ) : (
-        <div className="flex aspect-square items-center justify-center bg-slate-800">
-          <span className="text-xs text-slate-600">No image</span>
+        <div className="flex aspect-square items-center justify-center bg-slate-100">
+          <span className="text-xs text-slate-500">No image</span>
         </div>
       )}
       {r.title && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-5">
-          <div className="truncate text-center text-[11px] font-medium text-white">{r.title}</div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 pb-1.5 pt-5">
+          <div className="truncate text-center text-[11px] font-medium text-white">
+            {r.title}
+          </div>
         </div>
       )}
     </div>
@@ -171,74 +207,99 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
       }
     };
     return (
-      <div key={r.id} className="group/card relative cursor-pointer overflow-hidden rounded-lg" onClick={handleClick}>
+      <div
+        key={r.id}
+        className="group/card relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white"
+        onClick={handleClick}
+      >
         {renderDeleteBtn(r.id)}
         {r.url ? (
-          <video src={r.url} controls muted className="aspect-[9/16] w-full object-cover" onClick={(e) => e.stopPropagation()} />
+          <video
+            src={r.url}
+            controls
+            muted
+            className="aspect-[9/16] w-full object-cover"
+            onClick={(e) => e.stopPropagation()}
+          />
         ) : vData?.sourceImageUrl ? (
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={vData.sourceImageUrl}
               alt={r.title ?? "Source"}
-              className="aspect-[9/16] w-full object-cover opacity-50"
+              className="aspect-[9/16] w-full object-cover opacity-60"
             />
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 px-2">
-              <span className="mb-1 text-[10px] font-medium text-amber-400">待生成</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 px-2">
+              <span className="mb-1 text-[10px] font-medium text-amber-700">
+                待生成
+              </span>
               {vData.prompt && (
-                <p className="line-clamp-3 text-center text-[10px] leading-relaxed text-white/80">
+                <p className="line-clamp-3 text-center text-[10px] leading-relaxed text-slate-700">
                   {vData.prompt}
                 </p>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex aspect-[9/16] flex-col items-center justify-center bg-slate-800 px-2">
-            <span className="mb-1 text-[10px] font-medium text-amber-400">待生成</span>
+          <div className="flex aspect-[9/16] flex-col items-center justify-center bg-slate-100 px-2">
+            <span className="mb-1 text-[10px] font-medium text-amber-700">
+              待生成
+            </span>
             {vData?.prompt ? (
               <p className="line-clamp-4 text-center text-[10px] leading-relaxed text-slate-500">
                 {vData.prompt}
               </p>
             ) : (
-              <span className="text-xs text-slate-600">No prompt</span>
+              <span className="text-xs text-slate-500">No prompt</span>
             )}
           </div>
         )}
         {r.title && (
-          <div className="px-2 py-1 text-center text-[11px] text-slate-400">{r.title}</div>
+          <div className="px-2 py-1 text-center text-[11px] text-slate-500">
+            {r.title}
+          </div>
         )}
       </div>
     );
   };
 
   const renderJsonItem = (r: DomainResource) => {
-    const text = r.data != null
-      ? (typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2))
-      : "";
+    const text =
+      r.data != null
+        ? typeof r.data === "string"
+          ? r.data
+          : JSON.stringify(r.data, null, 2)
+        : "";
     return (
       <div
         key={r.id}
-        className="group/card relative cursor-pointer overflow-hidden rounded-lg bg-slate-900"
-        onClick={() => openEditor({ id: r.id, title: r.title ?? "JSON", data: r.data })}
+        className="group/card relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+        onClick={() =>
+          openEditor({ id: r.id, title: r.title ?? "JSON", data: r.data })
+        }
         title="Click to edit"
       >
         {renderDeleteBtn(r.id)}
-        <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-all px-2 pt-2 pb-8 font-mono text-[9px] leading-relaxed text-slate-400">
+        <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-all px-2 pb-8 pt-2 font-mono text-[9px] leading-relaxed text-slate-600">
           {text}
         </pre>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2 pb-1.5 pt-6">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-200/90 via-slate-100/40 to-transparent px-2 pb-1.5 pt-6">
           <div className="flex items-center justify-between">
-            <div className="truncate text-[11px] font-medium text-white">{r.title ?? "JSON"}</div>
-            <EditOutlined className="text-[11px] text-white/70" />
+            <div className="truncate text-[11px] font-medium text-slate-700">
+              {r.title ?? "JSON"}
+            </div>
+            <EditOutlined className="text-[11px] text-slate-600" />
           </div>
         </div>
       </div>
     );
   };
 
-  /* ---- Auto-expand newly appeared categories, preserve existing expand state ---- */
-  const categories = resources?.categories ?? [];
-  const categoryKeys = useMemo(() => categories.map((g) => `cat-${g.category}`), [categories]);
+  const categories = useMemo(() => resources?.categories ?? [], [resources]);
+  const categoryKeys = useMemo(
+    () => categories.map((g) => `cat-${g.category}`),
+    [categories],
+  );
   useEffect(() => {
     const newKeys = categoryKeys.filter((k) => !knownKeysRef.current.has(k));
     if (newKeys.length > 0) {
@@ -247,12 +308,12 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     }
   }, [categoryKeys]);
 
-  /* ---- Main render ---- */
-
   if (isLoading) {
     return (
       <aside className={ASIDE_CLASS}>
-        <div className="flex flex-1 items-center justify-center"><Spin size="small" /></div>
+        <div className="flex flex-1 items-center justify-center">
+          <Spin size="small" />
+        </div>
       </aside>
     );
   }
@@ -271,45 +332,81 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
     return (
       <aside className={ASIDE_CLASS}>
         <div className="flex flex-1 items-center justify-center">
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No resources yet" />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="No resources yet"
+          />
         </div>
       </aside>
     );
   }
 
-  const items = [
-    ...categories.map((g) => {
-      const images = g.items.filter((r) => r.mediaType === "image");
-      const videos = g.items.filter((r) => r.mediaType === "video");
-      const jsons = g.items.filter((r) => r.mediaType === "json");
+  const shouldShow = (mediaType: "image" | "video" | "json"): boolean =>
+    viewFilter === "all" || viewFilter === mediaType;
 
-      return {
-        key: `cat-${g.category}`,
-        label: (
-          <span className="flex items-center gap-1.5 text-xs font-medium">
-            {g.category}
-            <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>{g.items.length}</Tag>
-          </span>
-        ),
-        children: (
-          <div className="space-y-2">
-            {images.length > 0 && <div className="grid grid-cols-2 gap-2">{images.map(renderImageItem)}</div>}
-            {videos.length > 0 && <div className="grid grid-cols-2 gap-2">{videos.map(renderVideoItem)}</div>}
-            {jsons.length > 0 && <div className="space-y-2">{jsons.map(renderJsonItem)}</div>}
-          </div>
-        ),
-      };
-    }),
-  ];
+  const items = categories.map((g) => {
+    const images = g.items.filter((r) => r.mediaType === "image");
+    const videos = g.items.filter((r) => r.mediaType === "video");
+    const jsons = g.items.filter((r) => r.mediaType === "json");
+
+    return {
+      key: `cat-${g.category}`,
+      label: (
+        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+          {g.category}
+          <Tag style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
+            {g.items.length}
+          </Tag>
+        </span>
+      ),
+      children: (
+        <div className="space-y-2">
+          {shouldShow("image") && images.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {images.map(renderImageItem)}
+            </div>
+          )}
+          {shouldShow("video") && videos.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {videos.map(renderVideoItem)}
+            </div>
+          )}
+          {shouldShow("json") && jsons.length > 0 && (
+            <div className="space-y-2">{jsons.map(renderJsonItem)}</div>
+          )}
+          {((viewFilter === "image" && images.length === 0) ||
+            (viewFilter === "video" && videos.length === 0) ||
+            (viewFilter === "json" && jsons.length === 0)) && (
+            <div className="rounded border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-400">
+              No {viewFilter} assets in this category.
+            </div>
+          )}
+        </div>
+      ),
+    };
+  });
 
   return (
     <>
       <aside className={ASIDE_CLASS}>
-        <div className="border-b border-slate-800 px-3 py-2">
-          <Typography.Text strong style={{ fontSize: 12 }}>Resources</Typography.Text>
+        <div className="border-b border-slate-200 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <Typography.Text strong style={{ fontSize: 12 }}>
+              Resources
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {sessionId ? "session-linked" : "episode-only"}
+            </Typography.Text>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          <Collapse activeKey={activeKeys} onChange={(keys) => setActiveKeys(keys as string[])} items={items} size="small" ghost />
+          <Collapse
+            activeKey={activeKeys}
+            onChange={(keys) => setActiveKeys(keys as string[])}
+            items={items}
+            size="small"
+            ghost
+          />
         </div>
       </aside>
 
@@ -330,7 +427,12 @@ export function ResourcePanel({ resources, isLoading, scriptId, sessionId, onRef
         onClose={() => setEditingItem(null)}
         styles={{ wrapper: { width: 520 } }}
         extra={
-          <Button type="primary" size="small" onClick={() => void handleSave()} loading={isSaving}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => void handleSave()}
+            loading={isSaving}
+          >
             Save
           </Button>
         }
