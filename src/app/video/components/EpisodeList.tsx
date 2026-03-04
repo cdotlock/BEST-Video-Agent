@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Button, Typography, Empty, Tag, Space } from "antd";
+import { Button, Typography, Empty, Tag } from "antd";
 import {
   UploadOutlined,
   ReloadOutlined,
@@ -11,10 +11,6 @@ import {
 import type { EpisodeSummary, EpStatus } from "../types";
 import type { SessionSummary } from "@/app/types";
 
-/* ------------------------------------------------------------------ */
-/*  Status badge                                                       */
-/* ------------------------------------------------------------------ */
-
 const STATUS_CONFIG: Record<EpStatus, { color: string; label: string }> = {
   empty: { color: "default", label: "empty" },
   uploaded: { color: "blue", label: "uploaded" },
@@ -23,12 +19,15 @@ const STATUS_CONFIG: Record<EpStatus, { color: string; label: string }> = {
 
 function EpStatusTag({ status }: { status: EpStatus }) {
   const cfg = STATUS_CONFIG[status];
-  return <Tag color={cfg.color} style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>{cfg.label}</Tag>;
+  return (
+    <Tag
+      color={cfg.color}
+      style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}
+    >
+      {cfg.label}
+    </Tag>
+  );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Props                                                              */
-/* ------------------------------------------------------------------ */
 
 export interface EpisodeListProps {
   novelName: string;
@@ -39,18 +38,17 @@ export interface EpisodeListProps {
   onSelectEpisode: (ep: EpisodeSummary) => void;
   onDeleteEpisode: (ep: EpisodeSummary) => void;
   onRefresh: () => void;
-  onUpload: (scriptKey: string, scriptName: string | null, content: string | null) => void;
-  /** Sessions for the currently selected EP. */
+  onUpload: (
+    scriptKey: string,
+    scriptName: string | null,
+    content: string | null,
+  ) => void;
   sessions: SessionSummary[];
   currentSessionId: string | undefined;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
 
 export function EpisodeList({
   novelName,
@@ -76,10 +74,15 @@ export function EpisodeList({
 
     const reader = new FileReader();
     reader.onload = () => {
-      const content = reader.result as string;
-      // Derive scriptKey from filename: "EP3.md" → "EP3", "第3章.md" → "EP3"
+      const raw = reader.result;
+      if (typeof raw !== "string") {
+        return;
+      }
+      const content = raw;
       const baseName = file.name.replace(/\.[^.]+$/, "");
-      const epMatch = baseName.match(/(?:EP|ep|Ep)\s*(\d+)/i) ?? baseName.match(/第\s*(\d+)\s*章/);
+      const epMatch =
+        baseName.match(/(?:EP|ep|Ep)\s*(\d+)/i) ??
+        baseName.match(/第\s*(\d+)\s*章/);
       const scriptKey = epMatch ? `EP${epMatch[1]}` : baseName.toUpperCase();
       const scriptName = baseName;
 
@@ -90,11 +93,17 @@ export function EpisodeList({
   };
 
   return (
-    <aside className="flex h-full w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-950/80">
-      {/* Header */}
-      <div className="border-b border-slate-800 p-3">
-        <Typography.Text strong ellipsis style={{ display: "block", fontSize: 13 }}>
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+      <div className="border-b border-slate-200 p-3">
+        <Typography.Text
+          strong
+          ellipsis
+          style={{ display: "block", fontSize: 14 }}
+        >
           {novelName}
+        </Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          Episode Management
         </Typography.Text>
         <Button
           size="small"
@@ -116,17 +125,33 @@ export function EpisodeList({
         />
       </div>
 
-      {/* Episodes */}
       <div className="flex-1 overflow-y-auto p-2">
         <div className="mb-1 flex items-center justify-between">
-          <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <Typography.Text
+            type="secondary"
+            style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             Episodes
           </Typography.Text>
-          <Button type="text" size="small" icon={<ReloadOutlined />} loading={isLoading} onClick={onRefresh} />
+          <Button
+            type="text"
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={isLoading}
+            onClick={onRefresh}
+          />
         </div>
 
         {episodes.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No episodes" style={{ margin: "12px 0" }} />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="No episodes"
+            style={{ margin: "12px 0" }}
+          />
         ) : (
           <div className="space-y-1">
             {episodes.map((ep) => {
@@ -137,19 +162,19 @@ export function EpisodeList({
                     type="button"
                     className={`w-full rounded border px-2.5 py-2 text-left transition ${
                       isActive
-                        ? "border-blue-400/60 bg-blue-500/10"
-                        : "border-slate-800 bg-slate-900/40 hover:border-slate-600"
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                     onClick={() => onSelectEpisode(ep)}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-slate-100">
+                      <span className="text-xs font-medium text-slate-800">
                         {ep.scriptKey}
                       </span>
                       <EpStatusTag status={ep.status} />
                     </div>
                     {ep.scriptName && (
-                      <div className="mt-0.5 truncate text-[10px] text-slate-400">
+                      <div className="mt-0.5 truncate text-[10px] text-slate-500">
                         {ep.scriptName}
                       </div>
                     )}
@@ -160,7 +185,10 @@ export function EpisodeList({
                     danger
                     icon={<DeleteOutlined />}
                     className="!absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100"
-                    onClick={(e) => { e.stopPropagation(); onDeleteEpisode(ep); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteEpisode(ep);
+                    }}
                     style={{ width: 20, height: 20, minWidth: 20 }}
                   />
                 </div>
@@ -169,14 +197,26 @@ export function EpisodeList({
           </div>
         )}
 
-        {/* Sessions for selected EP */}
         {selectedEpisode && (
-          <div className="mt-4">
+          <div className="mt-4 border-t border-slate-100 pt-3">
             <div className="mb-1 flex items-center justify-between">
-              <Typography.Text type="secondary" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <Typography.Text
+                type="secondary"
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
                 Sessions
               </Typography.Text>
-              <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewSession} title="New Chat" />
+              <Button
+                type="text"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={onNewSession}
+                title="New Chat"
+              />
             </div>
             {sessions.length === 0 ? (
               <div className="py-2 text-center text-[10px] text-slate-500">
@@ -192,12 +232,12 @@ export function EpisodeList({
                         type="button"
                         className={`w-full rounded border px-2 py-1 text-left text-[10px] transition ${
                           isActive
-                            ? "border-emerald-400/60 bg-emerald-500/10"
-                            : "border-slate-800 bg-slate-900/40 hover:border-slate-600"
+                            ? "border-emerald-300 bg-emerald-50"
+                            : "border-slate-200 bg-white hover:border-slate-300"
                         }`}
                         onClick={() => onSelectSession(s.id)}
                       >
-                        <div className="truncate pr-5 text-slate-200">
+                        <div className="truncate pr-5 text-slate-700">
                           {s.title?.trim() || "Untitled"}
                         </div>
                       </button>
@@ -207,7 +247,10 @@ export function EpisodeList({
                         danger
                         icon={<DeleteOutlined />}
                         className="!absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteSession(s.id);
+                        }}
                         style={{ width: 20, height: 20, minWidth: 20 }}
                       />
                     </div>

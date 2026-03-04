@@ -35,7 +35,10 @@ export type { DomainResource, CategoryGroup, DomainResources };
 async function physical(logicalName: string): Promise<string> {
   await ensureVideoSchema();
   const resolved = await resolveTable(GLOBAL_USER, logicalName);
-  if (!resolved) throw new Error(`Video table "${logicalName}" not found in BizTableMapping`);
+  if (!resolved)
+    throw new Error(
+      `Video table "${logicalName}" not found in BizTableMapping`,
+    );
   return resolved.physicalName;
 }
 
@@ -88,7 +91,11 @@ export async function listEpisodes(novelId: string): Promise<EpisodeSummary[]> {
       novelId: row.novel_id as string,
       scriptKey: row.script_key as string,
       scriptName: row.script_name as string | null,
-      status: !hasContent ? "empty" : hasResources ? "has_resources" : "uploaded",
+      status: !hasContent
+        ? "empty"
+        : hasResources
+          ? "has_resources"
+          : "uploaded",
       createdAt: String(row.created_at),
     });
   }
@@ -124,7 +131,9 @@ export async function deleteEpisode(scriptId: string): Promise<void> {
     `SELECT novel_id, script_key FROM "${tScripts}" WHERE id = $1 LIMIT 1`,
     [scriptId],
   );
-  const scriptRow = scriptRows[0] as { novel_id: string; script_key: string } | undefined;
+  const scriptRow = scriptRows[0] as
+    | { novel_id: string; script_key: string }
+    | undefined;
 
   // Delete domain_resources for this script
   await deleteResourcesByScope("script", scriptId);
@@ -167,7 +176,10 @@ export async function getResources(
   }
 
   return {
-    categories: [...merged.entries()].map(([category, items]) => ({ category, items })),
+    categories: [...merged.entries()].map(([category, items]) => ({
+      category,
+      items,
+    })),
   };
 }
 
@@ -180,7 +192,9 @@ export async function getResources(
  */
 export { updateResourceData, deleteResource };
 
-export async function getEpisodeContent(scriptId: string): Promise<string | null> {
+export async function getEpisodeContent(
+  scriptId: string,
+): Promise<string | null> {
   const tScripts = await physical("novel_scripts");
   const { rows } = await bizPool.query(
     `SELECT script_content FROM "${tScripts}" WHERE id = $1 LIMIT 1`,
@@ -242,11 +256,12 @@ export async function runInitWorkflow(
       { novelId, scriptContent, scriptDbId },
     );
 
-    const text = result.content
-      ?.map((c: Record<string, unknown>) =>
-        "text" in c ? String(c.text) : JSON.stringify(c),
-      )
-      .join("\n") ?? "";
+    const text =
+      result.content
+        ?.map((c: Record<string, unknown>) =>
+          "text" in c ? String(c.text) : JSON.stringify(c),
+        )
+        .join("\n") ?? "";
 
     const parsed = JSON.parse(text) as InitWorkflowResult;
 
@@ -280,9 +295,35 @@ export async function getInitResult(
   );
   const row = rows[0] as { init_result: unknown } | undefined;
   if (!row?.init_result) return null;
-  return (typeof row.init_result === "string"
-    ? JSON.parse(row.init_result)
-    : row.init_result) as InitWorkflowResult;
+  return (
+    typeof row.init_result === "string"
+      ? JSON.parse(row.init_result)
+      : row.init_result
+  ) as InitWorkflowResult;
+}
+
+export interface EpisodeIdentity {
+  id: string;
+  scriptName: string | null;
+}
+
+export async function getEpisodeIdentityByScriptKey(
+  novelId: string,
+  scriptKey: string,
+): Promise<EpisodeIdentity | null> {
+  const tScripts = await physical("novel_scripts");
+  const { rows } = await bizPool.query(
+    `SELECT id, script_name FROM "${tScripts}" WHERE novel_id = $1 AND script_key = $2 LIMIT 1`,
+    [novelId, scriptKey],
+  );
+
+  const row = rows[0] as { id: string; script_name: string | null } | undefined;
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    scriptName: row.script_name,
+  };
 }
 
 export async function getEpisodeStatus(scriptId: string): Promise<EpStatus> {

@@ -29,7 +29,13 @@ Previous tool results may be compressed: \`[memory] summary (recall:call_xxx)\`.
 Use \`memory__recall\` only when the summary lacks detail you need.
 
 ### Error Handling
-When a tool call fails, report the error to the user. Do not fabricate results.`;
+When a tool call fails, report the error to the user. Do not fabricate results.
+
+### Style & Preference Orchestration
+- Prefer a **general style-driven workflow** over single-style defaults.
+- If current context contains a \`Style Profile (latest)\` block, treat it as baseline generation constraints.
+- User's explicit style request in the current turn has higher priority than stored style profile.
+- When style profile is missing or unconfirmed, ask for clarification before high-cost generation.`;
 
 /* ------------------------------------------------------------------ */
 /*  System prompt: static rules + active MCP descriptions              */
@@ -39,7 +45,9 @@ When a tool call fails, report the error to the user. Do not fabricate results.`
  * Build the full system prompt.
  * Static rules + dynamic active MCP list (with skill index under the skills MCP).
  */
-export async function buildSystemPrompt(preloadedSkills?: string[]): Promise<string> {
+export async function buildSystemPrompt(
+  preloadedSkills?: string[],
+): Promise<string> {
   const parts: string[] = [RULES];
 
   // Active MCP descriptions
@@ -75,13 +83,19 @@ async function buildMcpSection(preloadedSkills?: string[]): Promise<string> {
   return lines.join("\n");
 }
 
-async function appendSkillIndex(lines: string[], preloadedSkills?: string[]): Promise<void> {
+async function appendSkillIndex(
+  lines: string[],
+  preloadedSkills?: string[],
+): Promise<void> {
   const skills = await listSkills();
   if (skills.length === 0) return;
 
   lines.push("Available skills:");
   for (const s of skills) {
-    const mcps = s.requiresMcps.length > 0 ? ` [needs: ${s.requiresMcps.map((m) => `\`${m}\``).join(", ")}]` : "";
+    const mcps =
+      s.requiresMcps.length > 0
+        ? ` [needs: ${s.requiresMcps.map((m) => `\`${m}\``).join(", ")}]`
+        : "";
     lines.push(`- **${s.name}**: ${s.description}${mcps}`);
   }
 

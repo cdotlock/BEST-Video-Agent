@@ -2,7 +2,15 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Empty, Spin, Typography, Button, ConfigProvider, theme as antTheme } from "antd";
+import {
+  Card,
+  Empty,
+  Spin,
+  Typography,
+  Button,
+  ConfigProvider,
+  theme as antTheme,
+} from "antd";
 import { ReloadOutlined, VideoCameraOutlined } from "@ant-design/icons";
 import { fetchJson } from "@/app/components/client-utils";
 
@@ -31,7 +39,9 @@ export default function VideoNovelListPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchJson<{ novels: NovelItem[] }>("/api/video/novels");
+      const data = await fetchJson<{ novels: NovelItem[] }>(
+        "/api/video/novels",
+      );
       setNovels(data.novels);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load novels");
@@ -51,13 +61,13 @@ export default function VideoNovelListPage() {
   return (
     <ConfigProvider
       theme={{
-        algorithm: antTheme.darkAlgorithm,
+        algorithm: antTheme.defaultAlgorithm,
         token: { colorBgContainer: "transparent" },
       }}
     >
-      <main className="flex h-screen w-full flex-col bg-slate-950 text-slate-100">
+      <main className="flex h-screen w-full flex-col bg-slate-50 text-slate-900">
         {/* Header */}
-        <header className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-center gap-2">
             <VideoCameraOutlined style={{ fontSize: 20 }} />
             <Typography.Title level={4} style={{ margin: 0 }}>
@@ -76,14 +86,14 @@ export default function VideoNovelListPage() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {error && (
-            <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+            <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
               {error}
             </div>
           )}
 
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
-<Spin description="Loading novels…" size="large" />
+              <Spin description="Loading novels…" size="large" />
             </div>
           ) : novels.length === 0 ? (
             <Empty description="No novels found" style={{ marginTop: 80 }} />
@@ -98,17 +108,19 @@ export default function VideoNovelListPage() {
                     body: { padding: 16 },
                   }}
                   style={{
-                    background: "rgba(15, 23, 42, 0.6)",
-                    borderColor: "rgb(51, 65, 85)",
+                    background: "#ffffff",
+                    borderColor: "#e2e8f0",
                   }}
                 >
                   <Typography.Text strong style={{ fontSize: 14 }}>
                     {novel.name}
                   </Typography.Text>
-                  <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-400">
+                  <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
                     <span>ID: {novel.id}</span>
                     {novel.content_length != null && (
-                      <span>{(novel.content_length / 1000).toFixed(0)}k chars</span>
+                      <span>
+                        {(novel.content_length / 1000).toFixed(0)}k chars
+                      </span>
                     )}
                   </div>
                 </Card>
