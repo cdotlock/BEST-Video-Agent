@@ -50,3 +50,15 @@ curl -v "http://localhost:8001/api/video/episodes/{scriptId}/style-profile"
 ```
 
 期望：返回 `styleProfile.profile.confirmed=true`；重复保存后 `version` 递增。
+
+## 5) 验证任务注入生效
+
+```bash
+curl -v -X POST "http://localhost:8001/api/video/tasks"   -H 'Content-Type: application/json'   -d '{
+    "message": "基于当前风格给我生成第一镜 storyboard",
+    "video_context": {"novelId": "{novelId}", "scriptKey": "{scriptKey}"},
+    "user": "test"
+  }'
+```
+
+期望：任务事件流中的工具调用和结果描述能够体现已保存的 style_profile 约束；更新 style_profile 后再次发任务，行为随之变化。

@@ -128,6 +128,16 @@ curl -X POST http://localhost:8001/api/tasks/{task_id}/cancel
 
 - 先搜索参考图，选择 URL 后调用 reverse，再调用 style-profile 保存，最后读取并确认 `version` 递增。
 
+### Video Task 风格注入（新增）
+
+- `POST /api/video/tasks` 使用 `VideoContextProvider` 构建上下文。
+- Provider 会读取：
+  1. `init_workflow` 结果（若存在）
+  2. `style_profile`（若存在）
+- 每轮 LLM 调用前都会重新构建上下文，因此 style_profile 更新后，下一轮任务会自动生效（无需重启服务）。
+
+**因果**：`PUT /api/video/episodes/{scriptId}/style-profile` 成功后，下一次 `POST /api/video/tasks` 才会把最新风格参数注入到 agent loop。
+
 ## 双入口等价性
 
 REST API (`/api/*`) 和 MCP tools（agent 内部 / `/mcp` 外部）**共享同一 service layer**。
