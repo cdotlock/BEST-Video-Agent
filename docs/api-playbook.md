@@ -27,6 +27,7 @@ MCP 初始化是 **惰性** 的——首次 API 请求触发 `initMcp()`。
 ## 时序依赖（因果链）
 
 ### Skill → Agent
+
 1. `POST /api/skills` 创建 skill
 2. 下一次 `POST /api/chat` 时，`buildSystemPrompt()` 重新查 DB，新 skill 出现在 system prompt 的 Available Skills 索引中
 3. Agent 通过 `skills__get` tool 按需读取全文（progressive disclosure）
@@ -34,6 +35,7 @@ MCP 初始化是 **惰性** 的——首次 API 请求触发 `initMcp()`。
 **因果**：skill 不存在 → agent 不知道它 → 不会使用。
 
 ### Dynamic MCP → Agent
+
 1. `POST /api/mcps` 创建 MCP server（`enabled: true`）
 2. service 立即执行：DB 写入 → sandbox 加载 JS 代码 → `registry.replace()` 注册 provider
 3. 下一次 agent tool-use loop 时，`registry.listAllTools()` 包含新 tools
@@ -42,7 +44,9 @@ MCP 初始化是 **惰性** 的——首次 API 请求触发 `initMcp()`。
 **因果**：dynamic MCP 必须 create 且 sandbox load 成功 → tools 才在 agent 可用。`loadError` 非空说明沙盒加载失败，tools 不可用。
 
 ### Agent Chat 完整链路
+
 `POST /api/chat` → `runAgent()`:
+
 1. `initMcp()`（首次）
 2. `getOrCreateSession(session_id)` — 从 DB 加载/创建 session 及历史消息
 3. `buildSystemPrompt()` — 查 DB 注入 skill 索引
@@ -53,25 +57,32 @@ MCP 初始化是 **惰性** 的——首次 API 请求触发 `initMcp()`。
 8. 若请求传了 `logs=true` → 写 `temp/chat-{sessionId}.{timestamp}.json`
 
 ### Agent Chat Streaming (deprecated)
+
 `POST /api/chat/stream` 仍可用，但前端已迁移到 Task 架构。
 
 ### Task 后端驱动架构
+
 Task 解耦了任务执行与前端连接。agent loop 在后端独立运行，客户端通过 SSE 观察。
 
 **提交任务**：
+
 ```
 curl -X POST http://localhost:8001/api/tasks \
   -H 'Content-Type: application/json' \
   -d '{"message": "hello", "user": "test"}'
 # → { "task_id": "...", "session_id": "..." }
 ```
+
 返回后任务已在后端开始执行。
 
 **观察事件流**：
+
 ```
 curl -N http://localhost:8001/api/tasks/{task_id}/events
 ```
+
 SSE 事件类型：
+
 - `event: session` → `{ session_id }`
 - `event: delta` → `{ text }`（assistant 增量文本）
 - `event: tool` → `{ summary }`（工具/skill 摘要）
@@ -83,6 +94,7 @@ SSE 事件类型：
 每个事件带有单调递增 `id:` 字段。断线重连时，服务端通过 `Last-Event-ID` header 从 DB 重放遗漏事件，确保不丢失。
 
 **查询任务状态**：
+
 ```
 curl http://localhost:8001/api/tasks/{task_id}
 # → { "id", "sessionId", "status", "reply", "error", ... }
@@ -90,16 +102,31 @@ curl http://localhost:8001/api/tasks/{task_id}
 ```
 
 **取消任务**：
+
 ```
 curl -X POST http://localhost:8001/api/tasks/{task_id}/cancel
 ```
 
 **重连流程**：
+
 1. `GET /api/sessions/{sid}` → 响应包含 `activeTask: { id, status }` （若有活跃任务）
 2. 前端加载 session 时，发现 activeTask → 自动连接 `GET /api/tasks/{taskId}/events`
 3. EventSource 断线时浏览器自动重连，携带 `Last-Event-ID`
 
 **因果**：Task 状态和事件持久化到 DB，客户端断开不影响执行，重连后从断点继续。
+
+### Video 风格初始化链路（新增）
+
+1. `GET /api/video/style/search?q=...&limit=...` 检索参考图候选（当前来源：Wikimedia Commons）。
+2. `POST /api/video/style/reverse` 传入 `styleGoal + references + constraints`，生成 `reversePrompt + negativePrompt`。
+3. `PUT /api/video/episodes/{scriptId}/style-profile` 保存或确认风格档案（写入 `domain_resources`，`category=style_profile`）。
+4. `GET /api/video/episodes/{scriptId}/style-profile` 读取当前风格档案，供后续任务注入。
+
+**因果**：若 style-profile 未保存（步骤 3），任务执行阶段无法复用风格锁定参数；只有保存后，后续会话/任务才能稳定复用。
+
+**验证建议（curl）**：
+
+- 先搜索参考图，选择 URL 后调用 reverse，再调用 style-profile 保存，最后读取并确认 `version` 递增。
 
 ## 双入口等价性
 
